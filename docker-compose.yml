@@ -1,0 +1,24 @@
+# Local development only.
+#
+# Postgres (database), Auth and Storage are fully managed by Supabase and are
+# NEVER run locally via docker-compose. This file exists solely to provide a
+# local Redis instance for BullMQ during development. In production, Redis is
+# provided by a managed service (Upstash or Railway), not by this compose file.
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: orion-redis
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    volumes:
+      - orion_redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  orion_redis_data:
+    name: orion_redis_data
