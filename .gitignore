@@ -39,4 +39,5 @@ prisma/*.db
 # misc
 coverage/
 .eslintcache
+*.tsbuildinfo
 .claude/
