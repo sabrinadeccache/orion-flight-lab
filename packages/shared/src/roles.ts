@@ -18,3 +18,12 @@ export enum Role {
 }
 
 export const EXCLUSIVE_ROLES: Role[] = [Role.GERENTE_QUALIDADE];
+
+/**
+ * Returns true when `roles` violates the exclusivity rule: GERENTE_QUALIDADE
+ * can never be combined with any other role on the same UserProfile.
+ */
+export function hasExclusiveRoleConflict(roles: Role[]): boolean {
+  const hasExclusive = roles.some((role) => EXCLUSIVE_ROLES.includes(role));
+  return hasExclusive && roles.length > 1;
+}
