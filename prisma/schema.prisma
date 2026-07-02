@@ -201,6 +201,7 @@ model Organization {
   charge                Charge[]
   payment               Payment[]
   delinquency           Delinquency[]
+  instructorLessonLogs  InstructorLessonLog[]
 
   @@map("organizations")
 }
@@ -275,6 +276,7 @@ model Instructor {
   cmas              CMA[]
   proficiencies     Proficiency[]
   courseAssignments CourseAssignment[]
+  lessonLogs        InstructorLessonLog[]
 
   @@index([organization_id])
   @@map("instructors")
@@ -383,6 +385,28 @@ model CourseAssignment {
   @@index([instructor_id])
   @@index([course_id])
   @@map("course_assignments")
+}
+
+/// Log of lesson deliveries per instructor, used to enforce RN-15 (an
+/// instructor cannot teach more than 8h within any rolling 24h window).
+model InstructorLessonLog {
+  id              String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id String       @db.Uuid
+  organization    Organization @relation(fields: [organization_id], references: [id])
+  instructor_id   String       @db.Uuid
+  instructor      Instructor   @relation(fields: [instructor_id], references: [id])
+  course_id       String?      @db.Uuid
+  lesson_id       String?      @db.Uuid
+  hours           Decimal      @db.Decimal(5, 2)
+  delivered_at    DateTime
+  created_at      DateTime     @default(now())
+  updated_at      DateTime     @updatedAt
+  deleted_at      DateTime?
+
+  @@index([organization_id])
+  @@index([instructor_id])
+  @@index([delivered_at])
+  @@map("instructor_lesson_logs")
 }
 
 // ---------------------------------------------------------------------------
