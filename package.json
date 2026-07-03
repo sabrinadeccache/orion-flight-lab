@@ -10,8 +10,9 @@
     "lint": "eslint . --ext .ts,.tsx",
     "lint:fix": "eslint . --ext .ts,.tsx --fix",
     "typecheck": "npm run typecheck --workspace=packages/shared && npm run typecheck --workspace=apps/api && npm run typecheck --workspace=apps/web",
-    "dev:web": "npm run dev --workspace=apps/web",
-    "dev:api": "npm run dev --workspace=apps/api",
+    "build:shared": "npm run build --workspace=packages/shared",
+    "dev:web": "npm run build:shared && npm run dev --workspace=apps/web",
+    "dev:api": "npm run build:shared && npm run dev --workspace=apps/api",
     "prisma:validate": "prisma validate",
     "prisma:generate": "prisma generate"
   },
