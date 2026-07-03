@@ -1,4 +1,4 @@
-import { Body, Controller, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
 import { SupabaseAuthGuard } from '../auth/guards/supabase-auth.guard';
 import { OrganizationGuard } from '../auth/guards/organization.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -16,5 +16,10 @@ export class CertificatesController {
   @AuditLog({ action: 'create', entity: 'Certificate' })
   create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateCertificateDto) {
     return this.academicService.issueCertificate(user.organizationId, dto);
+  }
+
+  @Get()
+  findAll(@CurrentUser() user: AuthenticatedUser) {
+    return this.academicService.findCertificates(user.organizationId);
   }
 }

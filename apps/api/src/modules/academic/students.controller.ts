@@ -22,6 +22,11 @@ export class StudentsController {
     return this.academicService.createStudent(user.organizationId, dto);
   }
 
+  @Get('students')
+  findAll(@CurrentUser() user: AuthenticatedUser): Promise<Student[]> {
+    return this.academicService.findStudents(user.organizationId);
+  }
+
   @Get('students/:id/history')
   getHistory(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.academicService.getStudentHistory(user.organizationId, id);

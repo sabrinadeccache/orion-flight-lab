@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { Enrollment, EnrollmentStatus, ExpiryStatus, Student } from '@prisma/client';
+import { Certificate, Enrollment, EnrollmentStatus, ExpiryStatus, Student } from '@prisma/client';
 import { ExamType } from '@orion/shared';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { StorageService } from '../../common/storage/storage.service';
@@ -27,6 +27,13 @@ export class AcademicService {
         anac_record_number: dto.anac_record_number,
         birth_date: dto.birth_date ? new Date(dto.birth_date) : undefined,
       },
+    });
+  }
+
+  findStudents(organizationId: string): Promise<Student[]> {
+    return this.prisma.student.findMany({
+      where: { organization_id: organizationId, deleted_at: null },
+      orderBy: { full_name: 'asc' },
     });
   }
 
@@ -166,6 +173,13 @@ export class AcademicService {
       certificate_number: certificate.certificate_number,
       file_url: fileUrl,
     };
+  }
+
+  findCertificates(organizationId: string): Promise<Certificate[]> {
+    return this.prisma.certificate.findMany({
+      where: { organization_id: organizationId, deleted_at: null },
+      orderBy: { issued_at: 'desc' },
+    });
   }
 
   /** Seção 142.71 — full academic history of a student. */
