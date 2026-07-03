@@ -1,6 +1,7 @@
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as jwt from 'jsonwebtoken';
+import jwksClient, { JwksClient } from 'jwks-rsa';
 import { Request } from 'express';
 import { AuthenticatedUser, SupabaseJwtPayload } from '../types/authenticated-user';
 
@@ -10,12 +11,26 @@ import { AuthenticatedUser, SupabaseJwtPayload } from '../types/authenticated-us
  * roles) to the request. Login itself always happens client-side via
  * supabase-js; this guard only ever verifies the token the client already
  * obtained.
+ *
+ * Supabase projects sign access tokens asymmetrically (ES256, rotatable key
+ * pairs) and publish the public keys at /auth/v1/.well-known/jwks.json —
+ * there is no shared secret to verify against, so we fetch and cache the
+ * signing key by `kid` instead.
  */
 @Injectable()
 export class SupabaseAuthGuard implements CanActivate {
-  constructor(private readonly configService: ConfigService) {}
+  private readonly jwks: JwksClient;
 
-  canActivate(context: ExecutionContext): boolean {
+  constructor(private readonly configService: ConfigService) {
+    const supabaseUrl = this.configService.get<string>('SUPABASE_URL');
+    this.jwks = jwksClient({
+      jwksUri: `${supabaseUrl}/auth/v1/.well-known/jwks.json`,
+      cache: true,
+      cacheMaxAge: 10 * 60 * 1000,
+    });
+  }
+
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request & { user?: AuthenticatedUser }>();
     const token = this.extractToken(request);
 
@@ -23,17 +38,7 @@ export class SupabaseAuthGuard implements CanActivate {
       throw new UnauthorizedException('Missing bearer token');
     }
 
-    const secret = this.configService.get<string>('SUPABASE_JWT_SECRET');
-    if (!secret) {
-      throw new UnauthorizedException('Supabase JWT secret is not configured');
-    }
-
-    let payload: SupabaseJwtPayload;
-    try {
-      payload = jwt.verify(token, secret) as SupabaseJwtPayload;
-    } catch {
-      throw new UnauthorizedException('Invalid or expired token');
-    }
+    const payload = await this.verify(token);
 
     const organizationId = payload.organization_id ?? payload.app_metadata?.organization_id;
     const roles = payload.roles ?? payload.app_metadata?.roles ?? [];
@@ -50,6 +55,35 @@ export class SupabaseAuthGuard implements CanActivate {
     };
 
     return true;
+  }
+
+  private verify(token: string): Promise<SupabaseJwtPayload> {
+    return new Promise((resolve, reject) => {
+      jwt.verify(
+        token,
+        (header, callback) => {
+          if (!header.kid) {
+            callback(new Error('Token header is missing kid'));
+            return;
+          }
+          this.jwks.getSigningKey(header.kid, (err, key) => {
+            if (err || !key) {
+              callback(err ?? new Error('Signing key not found'));
+              return;
+            }
+            callback(null, key.getPublicKey());
+          });
+        },
+        { algorithms: ['ES256', 'RS256'] },
+        (err, decoded) => {
+          if (err || !decoded) {
+            reject(new UnauthorizedException('Invalid or expired token'));
+            return;
+          }
+          resolve(decoded as SupabaseJwtPayload);
+        },
+      );
+    });
   }
 
   private extractToken(request: Request): string | undefined {
