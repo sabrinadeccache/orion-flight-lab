@@ -37,21 +37,35 @@ export class AuditLogInterceptor implements NestInterceptor {
         const user = request.user;
         if (!user) return;
 
+        // ResponseInterceptor (registered via app.useGlobalInterceptors in main.ts)
+        // runs closer to the handler than this APP_INTERCEPTOR-provided one, so by
+        // the time this tap fires `result` is already the wrapped { data, meta,
+        // errors } envelope — unwrap it to get at the real entity.
+        const entity =
+          result && typeof result === 'object' && 'data' in result
+            ? (result as { data: unknown }).data
+            : result;
+
         const entityId =
-          result && typeof result === 'object' && 'id' in result
-            ? String((result as { id: unknown }).id)
+          entity && typeof entity === 'object' && 'id' in entity
+            ? String((entity as { id: unknown }).id)
             : undefined;
 
-        void this.prisma.auditLog.create({
-          data: {
-            organization_id: user.organizationId,
-            actor_user_id: user.id,
-            action: meta.action,
-            entity: meta.entity,
-            entity_id: entityId,
-            payload: result === undefined ? Prisma.JsonNull : (result as Prisma.InputJsonValue),
-          },
-        });
+        void this.prisma.auditLog
+          .create({
+            data: {
+              organization_id: user.organizationId,
+              actor_user_id: user.id,
+              action: meta.action,
+              entity: meta.entity,
+              entity_id: entityId,
+              payload: entity === undefined ? Prisma.JsonNull : (entity as Prisma.InputJsonValue),
+            },
+          })
+          .catch((err: unknown) => {
+            // eslint-disable-next-line no-console
+            console.error('AuditLogInterceptor: failed to write audit_log row', err);
+          });
       }),
     );
   }

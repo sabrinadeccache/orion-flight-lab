@@ -1,10 +1,12 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
+import { APP_INTERCEPTOR } from '@nestjs/core';
 import { AppController } from './app.controller';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { StorageModule } from './common/storage/storage.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { AuditLogInterceptor } from './modules/auth/interceptors/audit-log.interceptor';
 import { OrganizationModule } from './modules/organization/organization.module';
 import { PersonnelModule } from './modules/personnel/personnel.module';
 import { TrainingModule } from './modules/training/training.module';
@@ -41,6 +43,6 @@ import { ReportsModule } from './modules/reports/reports.module';
     ReportsModule,
   ],
   controllers: [AppController],
-  providers: [],
+  providers: [{ provide: APP_INTERCEPTOR, useClass: AuditLogInterceptor }],
 })
 export class AppModule {}
