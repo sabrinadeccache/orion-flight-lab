@@ -19,6 +19,7 @@ import { NOTIFICATIONS_QUEUE } from './notifications.constants';
           connection: {
             host: url.hostname,
             port: Number(url.port || 6379),
+            username: url.username || undefined,
             password: url.password || undefined,
             // Managed Redis (Upstash, Railway) is exposed over TLS via the
             // rediss:// scheme — ioredis needs an explicit tls option or the
