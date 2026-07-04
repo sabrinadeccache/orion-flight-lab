@@ -20,6 +20,10 @@ import { NOTIFICATIONS_QUEUE } from './notifications.constants';
             host: url.hostname,
             port: Number(url.port || 6379),
             password: url.password || undefined,
+            // Managed Redis (Upstash, Railway) is exposed over TLS via the
+            // rediss:// scheme — ioredis needs an explicit tls option or the
+            // handshake fails, plain redis:// (local/docker-compose) needs none.
+            tls: url.protocol === 'rediss:' ? {} : undefined,
             lazyConnect: true,
             maxRetriesPerRequest: null,
           },
