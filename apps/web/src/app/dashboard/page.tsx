@@ -14,16 +14,23 @@ interface ExpiringQualification {
   expires_at: string | null;
 }
 
+interface DashboardSummary {
+  activeStudents: number;
+  activeCourses: number;
+  instructors: number;
+}
+
 export default async function DashboardPage(): Promise<React.ReactElement> {
   const me = await apiFetch<MeResponse>('/auth/me');
   const expiringQualifications = (await apiFetch<ExpiringQualification[]>(
     '/qualifications/expiring?days=30',
   )) ?? [];
+  const summary = await apiFetch<DashboardSummary>('/reports/dashboard-summary');
 
   const kpis = [
-    { label: 'Alunos ativos', value: '—' },
-    { label: 'Cursos ativos', value: '—' },
-    { label: 'Instrutores', value: '—' },
+    { label: 'Alunos ativos', value: summary?.activeStudents ?? '—' },
+    { label: 'Cursos ativos', value: summary?.activeCourses ?? '—' },
+    { label: 'Instrutores', value: summary?.instructors ?? '—' },
     { label: 'Qualificações a vencer (30d)', value: expiringQualifications.length },
   ];
 
