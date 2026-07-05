@@ -7,7 +7,7 @@
     "experimentalDecorators": true,
     "sourceMap": false,
     "outDir": "./dist",
-    "baseUrl": "./",
+    "rootDir": "./src",
     "incremental": false
   },
   "include": ["src/**/*.ts"],
