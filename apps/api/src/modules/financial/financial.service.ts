@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Charge, Delinquency, Payment } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CreateChargeDto } from './dto/create-charge.dto';
@@ -43,18 +43,33 @@ export class FinancialService {
     return this.prisma.charge.findMany({ where: { organization_id: organizationId, deleted_at: null } });
   }
 
+  /** RN-31: a payment can't push the charge's total paid past its amount. */
   async createPayment(organizationId: string, dto: CreatePaymentDto): Promise<Payment> {
-    await this.assertExists(
-      () =>
-        this.prisma.charge.findFirst({
-          where: { id: dto.charge_id, organization_id: organizationId, deleted_at: null },
-          select: { id: true },
-        }),
-      'Charge',
-    );
-    return this.prisma.payment.create({
+    const charge = await this.prisma.charge.findFirst({
+      where: { id: dto.charge_id, organization_id: organizationId, deleted_at: null },
+      include: { payments: { where: { deleted_at: null } } },
+    });
+    if (!charge) {
+      throw new NotFoundException('Charge not found');
+    }
+
+    const alreadyPaid = charge.payments.reduce((sum, payment) => sum + Number(payment.amount), 0);
+    const totalAfterPayment = alreadyPaid + dto.amount;
+    if (totalAfterPayment > Number(charge.amount)) {
+      throw new BadRequestException(
+        `Payment would exceed the charge amount (already paid ${alreadyPaid}, charge is ${charge.amount}) (RN-31)`,
+      );
+    }
+
+    const payment = await this.prisma.payment.create({
       data: { organization_id: organizationId, ...dto },
     });
+
+    if (totalAfterPayment === Number(charge.amount)) {
+      await this.prisma.charge.update({ where: { id: charge.id }, data: { status: 'paga' } });
+    }
+
+    return payment;
   }
 
   findDelinquencies(organizationId: string): Promise<Delinquency[]> {
