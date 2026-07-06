@@ -16,7 +16,7 @@ Trata-se de um sistema **auditável**: toda ação relevante deve deixar rastro 
 - **apps/api** — NestJS (monólito modular) + TypeScript, módulos em `apps/api/src/modules`
 - **Banco de dados** — Supabase (Postgres + Auth + Storage + Row Level Security), acessado via **Prisma ORM**
 - **Filas/Jobs** — BullMQ + Redis (Upstash/Railway em produção; `docker-compose` com Redis local apenas para desenvolvimento)
-- **Observabilidade** — Sentry
+- **Observabilidade** — Sentry (`@sentry/nestjs` na API, `@sentry/nextjs` no web; código real, ver §11)
 - **Monorepo** — npm workspaces (sem Turborepo/Nx nesta fase)
 
 ## 3. Estrutura de módulos (apps/api/src/modules)
@@ -119,6 +119,8 @@ O projeto **não está mais em estágio de scaffold**. Existe um projeto Supabas
 - **Redis**: Upstash real configurado em `REDIS_URL` (`rediss://`, TLS). BullMQ testado ponta a ponta com jobs reais.
 - **Banco de dados fica sempre vazio em repouso** — toda vez que uma sessão cria dados de teste (organização, alunos, etc.) para validar algo, eles devem ser **removidos ao final** (ver §15). Se você encontrar `organizations` com `count > 0`, isso é resíduo de uma sessão anterior que não limpou — pode apagar.
 - Local: `npm run dev:api` e `npm run dev:web` (a partir da raiz) sobem API (porta 3001) e web (porta 3000) contra o Supabase/Redis reais. Não há Postgres/Redis local neste ambiente — não use `docker compose up`, ele não foi testado neste sandbox (Docker não está disponível aqui).
+- **Sentry**: integração de código real e completa (`apps/api/src/instrument.ts` + captura no `HttpExceptionFilter` para 5xx; `apps/web/instrumentation-client.ts` + `sentry.server.config.ts` + `sentry.edge.config.ts` + `global-error.tsx`), mas `SENTRY_DSN`/`NEXT_PUBLIC_SENTRY_DSN` no `.env` ainda são o placeholder de exemplo (`examplePublicKey@o0.ingest.sentry.io`). Com placeholder, o SDK fica **intencionalmente desinicializado** (`Sentry.isInitialized() === false`) e todo `captureException` é um no-op seguro — confirmado por teste. Para ativar de verdade: criar um projeto real no Sentry e colar o DSN real em `SENTRY_DSN` (API) e `NEXT_PUBLIC_SENTRY_DSN` (web); opcionalmente `SENTRY_ORG`/`SENTRY_PROJECT`/`SENTRY_AUTH_TOKEN` para o upload de source maps no build do web.
+- **CORS**: `apps/api/src/main.ts` usa uma allowlist configurável via `CORS_ALLOWED_ORIGINS` (`.env`, comma-separated), não mais `app.enableCors()` aberto. Sem a env var, cai em `http://localhost:3000` (dev) e loga um warning se `NODE_ENV=production`. Antes de produção: setar `CORS_ALLOWED_ORIGINS` para o(s) domínio(s) real(is) do `apps/web`.
 
 ## 12. Status de validação por módulo
 
@@ -134,6 +136,8 @@ Testado **ponta a ponta contra a infraestrutura real** (não é só `lint`/`type
 - ✅ **segurança multi-tenant** — auditoria de IDOR completa (escrita e leitura) em todos os módulos; ver §13.
 - ✅ **sgq / sgso** — RN-25 a RN-28 implementadas e testadas ponta a ponta via HTTP real (API local + token real do Supabase Auth + Postgres real), incluindo os dois casos negativos (bloqueio) e positivos (liberação) de cada regra. Migração real aplicada (`Risk.status`, `SafetyOccurrence.hazard_id`), advisor de segurança limpo depois.
 - ✅ **clients / crm / contracts / financial** — RN-29 a RN-32 implementadas e testadas ponta a ponta via HTTP real (RN-29/30/31) e via invocação direta do cron (RN-32, mesmo método do §16.1). Nenhuma migração de schema necessária (campos já existiam).
+- ✅ **Sentry** — integração de código completa e testada (build real de `apps/api` e `apps/web` sem erros/avisos do Sentry; smoke test confirmando que `captureException` não quebra com DSN placeholder). Falta só o DSN real (ver §11).
+- ✅ **CORS** — allowlist testada ponta a ponta via `curl` com preflight `OPTIONS`: origem em `CORS_ALLOWED_ORIGINS` recebe `Access-Control-Allow-Origin`, origem fora da lista não recebe o header.
 - ✅ **RN-13, RN-20, RN-22** — testadas ponta a ponta contra a infra real (ver §16.1). `AcademicService.updateExpiredStatuses()` (RN-13), `NotificationsCron.checkCourseInactivity()` (RN-20) e `checkAnacCommunicationDeadlines()` (RN-22) invocados diretamente via `NestFactory.createApplicationContext(AppModule)` contra Supabase/Upstash reais. Fixtures cobriram os limiares exatos: qualificação vencida há 10 dias, curso inativo há 190 dias (→ deveria suspender) e há 160 dias (→ deveria só alertar), `SemestralReport` com deadline em 45 dias (dentro da janela de 60). Resultado: `{ qualifications: 1, enrollments: 1 }` atualizados por RN-13; os 2 jobs `course-inactive` (um `SUSPENSO`, um `ALERTA_INATIVIDADE`) e o job `anac-communication` foram enfileirados corretamente na fila BullMQ real; os status em banco confirmaram exatamente o esperado. **Nenhum bug encontrado** — a implementação já estava correta.
 
 ## 13. Bugs reais encontrados e corrigidos nesta rodada de validação
@@ -150,6 +154,7 @@ Todos com commit próprio (`git log` tem a mensagem completa e o racional). Resu
 8. **RN-05 era impossível de satisfazer**: `CreateExamDto` não tinha campo `result` (exame sempre ficava `PENDENTE`), e não existia nenhum endpoint para registrar `Attendance`. Ambos corrigidos.
 9. **IDOR sistêmico**: toda criação de entidade "filha" (ex.: `ClientUnit.client_id`, `Enrollment.student_id`, `Risk.hazard_id`) confiava no ID vindo do cliente sem checar `organization_id`. Corrigido em `clients`, `contracts`, `crm`, `financial`, `sgq`, `sgso`, `academic`.
 10. **`CrmService.createProposal` exigia uma `Account` mesmo com `account_id` opcional no DTO** — qualquer proposta sem conta vinculada (o caso comum) sempre retornava 404 "Account not found". Corrigido para só validar quando `account_id` é informado.
+11. **CORS estava totalmente aberto** (`app.enableCors()` sem opções, reflete qualquer origem) — trocado por allowlist configurável via `CORS_ALLOWED_ORIGINS` (ver §11).
 
 ## 14. Armadilhas conhecidas (não redescobrir)
 
@@ -173,8 +178,11 @@ Para validar qualquer endpoint/regra de negócio contra a infra real:
 
 ## 16. Próximos passos sugeridos (em ordem de valor)
 
-1. Configurar Sentry de verdade (hoje é placeholder em `.env`).
-2. Se for para produção: revisar CORS (`app.enableCors()` está aberto sem allowlist) e configurar domínio(s) permitido(s).
+Não há próximos passos técnicos pendentes conhecidos no momento — todas as RNs numeradas (§5) e os itens de infraestrutura (Sentry, CORS) estão implementados e testados (§12). O que resta depende de decisões de negócio externas:
+
+1. Criar um projeto Sentry real e colar o DSN em `SENTRY_DSN`/`NEXT_PUBLIC_SENTRY_DSN` (ver §11) — depende de uma conta Sentry, não é algo que uma sessão de agente possa provisionar sozinha.
+2. Definir o(s) domínio(s) real(is) de produção do `apps/web` e setar `CORS_ALLOWED_ORIGINS` de acordo (ver §11) antes de qualquer deploy de produção.
+3. Definir regras de negócio adicionais conforme o produto evoluir (novos módulos, novos requisitos ANAC).
 
 ### 16.1. Como testar crons/jobs agendados ponta a ponta (sem esperar o schedule)
 
