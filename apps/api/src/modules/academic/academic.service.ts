@@ -1,5 +1,13 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { Certificate, Enrollment, EnrollmentStatus, ExpiryStatus, Student } from '@prisma/client';
+import {
+  Attendance,
+  Certificate,
+  Enrollment,
+  EnrollmentStatus,
+  ExamResult,
+  ExpiryStatus,
+  Student,
+} from '@prisma/client';
 import { ExamType } from '@orion/shared';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { StorageService } from '../../common/storage/storage.service';
@@ -7,6 +15,7 @@ import { CreateStudentDto } from './dto/create-student.dto';
 import { CreateEnrollmentDto } from './dto/create-enrollment.dto';
 import { CreateExamDto } from './dto/create-exam.dto';
 import { CreateCertificateDto } from './dto/create-certificate.dto';
+import { CreateAttendanceDto } from './dto/create-attendance.dto';
 
 /** RN-11: a class/course may never have more than 25 active enrollments. */
 const MAX_STUDENTS_PER_COURSE = 25;
@@ -104,6 +113,7 @@ export class AcademicService {
       examiner_id: dto.examiner_id,
       exam_date: new Date(dto.exam_date),
       score: dto.score,
+      result: dto.result ?? ExamResult.PENDENTE,
       attempt_number: dto.attempt_number ?? 1,
     };
 
@@ -114,6 +124,26 @@ export class AcademicService {
 
     const exam = await this.prisma.practicalExam.create({ data: baseData });
     return { id: exam.id, type: ExamType.PRATICO };
+  }
+
+  /** Seção 142.71 — attendance record, read by RN-05 to gate certificate issuance. */
+  async registerAttendance(organizationId: string, dto: CreateAttendanceDto): Promise<Attendance> {
+    const enrollment = await this.prisma.enrollment.findFirst({
+      where: { id: dto.enrollment_id, organization_id: organizationId, deleted_at: null },
+    });
+    if (!enrollment) {
+      throw new NotFoundException('Enrollment not found');
+    }
+
+    return this.prisma.attendance.create({
+      data: {
+        organization_id: organizationId,
+        enrollment_id: dto.enrollment_id,
+        lesson_id: dto.lesson_id,
+        date: new Date(dto.date),
+        present: dto.present ?? true,
+      },
+    });
   }
 
   /**
