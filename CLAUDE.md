@@ -76,11 +76,13 @@ Trata-se de um sistema **auditável**: toda ação relevante deve deixar rastro 
 
 ```bash
 npm install                 # instala dependências de todos os workspaces
-npm run lint                # eslint em todo o monorepo
+npm run lint                # eslint em todo o monorepo (builda @orion/shared antes)
 npm run lint:fix            # eslint --fix em todo o monorepo
-npm run typecheck           # tsc --noEmit em todos os apps/packages
+npm run typecheck           # tsc --noEmit em todos os apps/packages (builda @orion/shared antes)
 npm run dev --workspace=apps/web
 npm run dev --workspace=apps/api
+npm run test --workspace=apps/api              # testes unitários (Prisma mockado)
+npm run test:integration --workspace=apps/api  # testes de integração (precisa de DATABASE_URL efêmero — ver §17)
 npx prisma validate         # valida prisma/schema.prisma
 npx prisma generate         # gera o client
 npx prisma migrate dev      # aplica migrações em ambiente local
@@ -92,7 +94,7 @@ docker compose up -d        # sobe Redis local para BullMQ
 - Commits em **inglês**, no padrão **Conventional Commits** (`feat:`, `fix:`, `chore:`, `docs:`, `refactor:`, `test:`).
 - Commits **granulares por módulo** — nunca um commit único gigante ao final.
 - Nenhum commit pode ser criado com lint ou typecheck quebrado (**zero tolerância**).
-- `main` é a branch padrão e protegida por convenção; push direto é permitido neste estágio do projeto, mas todo push deve ser precedido de lint+typecheck limpos.
+- `main` é a branch padrão e protegida por convenção; push direto é permitido neste estágio do projeto, mas todo push deve ser precedido de lint+typecheck limpos. Desde que o CI existe (ver §17), o mesmo vale para ele — não empurrar código que quebre `.github/workflows/ci.yml`.
 - Nunca commitar `.env`, segredos, ou credenciais reais do Supabase/Sentry.
 
 ## 9. Regras de lint (obrigatórias)
@@ -140,6 +142,7 @@ Testado **ponta a ponta contra a infraestrutura real** (não é só `lint`/`type
 - ✅ **clients / crm / contracts / financial** — RN-29 a RN-32 implementadas e testadas ponta a ponta via HTTP real (RN-29/30/31) e via invocação direta do cron (RN-32, mesmo método do §16.1). Nenhuma migração de schema necessária (campos já existiam).
 - ✅ **Sentry** — integração de código completa e testada (build real de `apps/api` e `apps/web` sem erros/avisos do Sentry; smoke test confirmando que `captureException` não quebra com DSN placeholder). Falta só o DSN real (ver §11).
 - ✅ **CORS** — allowlist testada ponta a ponta via `curl` com preflight `OPTIONS`: origem em `CORS_ALLOWED_ORIGINS` recebe `Access-Control-Allow-Origin`, origem fora da lista não recebe o header.
+- ✅ **Testes automatizados + CI** — 10 arquivos `*.spec.ts` cobrindo RN-05 a RN-32 (63 testes unitários, Prisma mockado) + 1 teste de integração multi-tenant contra Postgres real efêmero + pipeline de GitHub Actions com 5 jobs (lint, typecheck, test-unit, test-integration, build). Ver §17.
 - ✅ **RN-13, RN-20, RN-22** — testadas ponta a ponta contra a infra real (ver §16.1). `AcademicService.updateExpiredStatuses()` (RN-13), `NotificationsCron.checkCourseInactivity()` (RN-20) e `checkAnacCommunicationDeadlines()` (RN-22) invocados diretamente via `NestFactory.createApplicationContext(AppModule)` contra Supabase/Upstash reais. Fixtures cobriram os limiares exatos: qualificação vencida há 10 dias, curso inativo há 190 dias (→ deveria suspender) e há 160 dias (→ deveria só alertar), `SemestralReport` com deadline em 45 dias (dentro da janela de 60). Resultado: `{ qualifications: 1, enrollments: 1 }` atualizados por RN-13; os 2 jobs `course-inactive` (um `SUSPENSO`, um `ALERTA_INATIVIDADE`) e o job `anac-communication` foram enfileirados corretamente na fila BullMQ real; os status em banco confirmaram exatamente o esperado. **Nenhum bug encontrado** — a implementação já estava correta.
 
 ## 13. Bugs reais encontrados e corrigidos nesta rodada de validação
@@ -157,6 +160,7 @@ Todos com commit próprio (`git log` tem a mensagem completa e o racional). Resu
 9. **IDOR sistêmico**: toda criação de entidade "filha" (ex.: `ClientUnit.client_id`, `Enrollment.student_id`, `Risk.hazard_id`) confiava no ID vindo do cliente sem checar `organization_id`. Corrigido em `clients`, `contracts`, `crm`, `financial`, `sgq`, `sgso`, `academic`.
 10. **`CrmService.createProposal` exigia uma `Account` mesmo com `account_id` opcional no DTO** — qualquer proposta sem conta vinculada (o caso comum) sempre retornava 404 "Account not found". Corrigido para só validar quando `account_id` é informado.
 11. **CORS estava totalmente aberto** (`app.enableCors()` sem opções, reflete qualquer origem) — trocado por allowlist configurável via `CORS_ALLOWED_ORIGINS` (ver §11).
+12. **`npm run lint`/`npm run typecheck` da raiz quebravam num checkout limpo**: dependiam de `packages/shared/dist` já existir, mas nenhum dos dois scripts compilava `@orion/shared` antes — só funcionava porque `dev:api`/`dev:web` sempre rodam `build:shared` primeiro, mascarando o problema em qualquer sessão que já tivesse rodado um desses. Reproduzido de propósito (apagando `dist/` e rodando `typecheck`) antes de confirmar e corrigir — ambos os scripts agora rodam `build:shared` como primeiro passo. Foi assim que o CI (ver §17) quase nasceu quebrado.
 
 ## 14. Armadilhas conhecidas (não redescobrir)
 
@@ -180,9 +184,10 @@ Para validar qualquer endpoint/regra de negócio contra a infra real:
 
 ## 16. Próximos passos sugeridos (em ordem de valor)
 
-Não há próximos passos técnicos pendentes conhecidos no momento — todas as RNs numeradas (§5) e os itens de infraestrutura (Sentry, CORS) estão implementados e testados (§12).
+Não há próximos passos técnicos pendentes conhecidos no momento — todas as RNs numeradas (§5), os itens de infraestrutura (Sentry, CORS) e a rede de testes automatizados (§17) estão implementados e testados (§12).
 
 - ✅ **Sentry**: DSNs reais já configurados (`SENTRY_DSN` e `NEXT_PUBLIC_SENTRY_DSN`), ambos os projetos na região UE (`ingest.de.sentry.io`, confirma Alemanha). Scrubbing de PII (ver §11) já está ativo.
+- ✅ **Testes automatizados + CI**: implementados (ver §17). Próxima extensão natural, quando fizer sentido, é um smoke test E2E do `apps/web` (Playwright) no CI — deliberadamente fora de escopo desta rodada (ver §17).
 - ⏳ **Domínio**: decidido — **`www.orionflightlab.com.br`** (raiz `orionflightlab.com.br`). Plano de subdomínio: `www.orionflightlab.com.br` (ou raiz) para `apps/web`, `api.orionflightlab.com.br` para `apps/api`. Ainda **não registrado/configurado em DNS** — quando o registro e a hospedagem estiverem prontos, setar `CORS_ALLOWED_ORIGINS=https://www.orionflightlab.com.br` (e o subdomínio de staging, se houver) antes de ir para produção (ver §11).
 - Definir regras de negócio adicionais conforme o produto evoluir (novos módulos, novos requisitos ANAC) fica como próximo item de valor depois disso.
 
@@ -198,3 +203,30 @@ Os handlers de `@Cron(...)` (`academic.cron.ts`, `notifications.cron.ts`, `finan
    - Para inspecionar jobs do BullMQ sem que o `NotificationsProcessor` já consuma: `app.get(getQueueToken(NOTIFICATIONS_QUEUE))`, `queue.pause()` antes de rodar os crons, depois `queue.getJobs(['waiting','delayed','paused'])`.
 3. Apagar o script ao final (não commitar) — foi só instrumentação de teste, não faz parte do produto.
 4. Fixtures de banco via `execute_sql` direto, com os valores exatamente nos limiares das RNs (ex.: `last_activity_at = now() - interval '190 days'` para RN-20 suspender, `'160 days'` para só alertar).
+
+## 17. Testes automatizados e CI
+
+A validação manual ponta a ponta (§15) prova que uma RN funciona *no momento em que foi testada* — não protege contra uma mudança futura quebrá-la silenciosamente. Esta seção existe para isso: uma rede de segurança automática, que roda sozinha a cada push/PR via GitHub Actions (`.github/workflows/ci.yml`), sem depender de infraestrutura real compartilhada.
+
+### Duas camadas de teste, dois bancos diferentes
+
+- **Unit (`apps/api/src/**/*.spec.ts`, rodado com `npm run test --workspace=apps/api`)** — um arquivo por service/cron que implementa alguma RN, `PrismaService` **mockado** (`jest.fn()` por model/método usado). Cobre cada RN nos dois sentidos: o cenário que ela **bloqueia** (deve lançar `BadRequestException`/`NotFoundException` citando o número da RN) e o que ela **libera**. Hoje são 10 arquivos, 63 testes, cobrindo RN-05 até RN-32 inteiras (mapa completo: `academic`, `personnel`, `sgq`, `sgso`, `contracts`, `crm`, `financial` (+ seu cron), `notifications.cron`, `audit-log.interceptor`).
+- **Integration (`apps/api/test/*.integration.spec.ts`, rodado com `npm run test:integration --workspace=apps/api`)** — usa o `PrismaClient` **real** (não mockado) contra um **Postgres efêmero**: no CI, um container `postgres:16-alpine` subido só para aquele job, com `prisma migrate deploy` aplicado; localmente, só roda se `DATABASE_URL` estiver setado (senão o describe inteiro é pulado via `describe.skip`) — **nunca aponte isso para o Supabase real do `.env`**, que deve continuar sempre vazio (§11). Hoje cobre a classe de bug do IDOR sistêmico (§13.9): criar uma entidade na organização B apontando para um recurso pai que pertence à organização A deve ser rejeitado, testado de verdade contra constraints reais do Postgres, não assumido.
+
+Isso **não substitui** a validação manual ponta a ponta contra o Supabase real (§15) para mudanças grandes — são complementares. O CI garante que nada regride silenciosamente; a validação manual prova que a peça nova funciona de verdade contra a infra real na primeira vez.
+
+### Pipeline (`.github/workflows/ci.yml`)
+
+Gatilho: `push`/`pull_request` para `main`. 5 jobs, todos independentes entre si (rodam em paralelo): `lint`, `typecheck`, `test-unit`, `test-integration` (com o serviço Postgres efêmero acima), `build` (compila `apps/api` e `apps/web`; usa variáveis `NEXT_PUBLIC_*` placeholder já que o build do Next faz prerender e o client do Supabase lança erro se a URL vier vazia — nenhuma delas precisa ser real, o build nunca faz uma chamada de rede de verdade).
+
+### Rodando localmente
+
+```bash
+npm run test --workspace=apps/api              # unit — sempre roda, sem dependências externas
+DATABASE_URL=postgresql://user:pass@localhost:5432/postgres \
+DIRECT_URL=postgresql://user:pass@localhost:5432/postgres \
+  npx prisma migrate deploy && \
+  npm run test:integration --workspace=apps/api  # integration — precisa de um Postgres real (local/container), nunca o do .env
+```
+
+Docker não está disponível neste sandbox (§11), então o teste de integração não pôde ser exercitado localmente nesta sessão — foi validado por checagem de tipos isolada (`tsc --noEmit` no arquivo) e a prova real de que funciona é o próprio job `test-integration` passando no GitHub Actions.
