@@ -60,6 +60,10 @@ Trata-se de um sistema **auditável**: toda ação relevante deve deixar rastro 
 - **RN-26** — Ação corretiva (SGQ) não pode ser criada com `due_date` no passado.
 - **RN-27** — Risco (SGSO) de nível alto (`probability × severity ≥ 15`, matriz 5×5) não pode ser aceito/mitigado sem ao menos uma mitigação registrada.
 - **RN-28** — Ocorrência de segurança (SGSO) de severidade "alta"/"critica" exige um `Hazard` vinculado para investigação reativa do SGSO.
+- **RN-29** — Subscription só pode ser criada contra um Contract com `status = "ativo"`.
+- **RN-30** — Pipeline não pode ir para o estágio "ganho" se a Proposal vinculada estiver com `valid_until` vencido ou `status = "recusada"`.
+- **RN-31** — Payment não pode fazer o total pago exceder o `amount` da Charge; Charge muda automaticamente para `status = "paga"` quando totalmente quitada.
+- **RN-32** — Job diário marca Charges vencidas e ainda `"pendente"` como inadimplentes, criando/atualizando `Delinquency.days_overdue`.
 
 ## 6. Referências regulatórias
 
@@ -129,7 +133,7 @@ Testado **ponta a ponta contra a infraestrutura real** (não é só `lint`/`type
 - ✅ **frontend** — login, dashboard, students, personnel, documents, qualifications renderizados de verdade no Chromium headless (Playwright), zero erros de console, middleware de proteção de rota testado.
 - ✅ **segurança multi-tenant** — auditoria de IDOR completa (escrita e leitura) em todos os módulos; ver §13.
 - ✅ **sgq / sgso** — RN-25 a RN-28 implementadas e testadas ponta a ponta via HTTP real (API local + token real do Supabase Auth + Postgres real), incluindo os dois casos negativos (bloqueio) e positivos (liberação) de cada regra. Migração real aplicada (`Risk.status`, `SafetyOccurrence.hazard_id`), advisor de segurança limpo depois.
-- ⚠️ **clients / crm / contracts / financial** — só CRUD base validado estruturalmente (lint/typecheck/IDOR), **sem** regras de negócio específicas testadas (porque não há RNs numeradas definidas para eles ainda além do isolamento multi-tenant).
+- ✅ **clients / crm / contracts / financial** — RN-29 a RN-32 implementadas e testadas ponta a ponta via HTTP real (RN-29/30/31) e via invocação direta do cron (RN-32, mesmo método do §16.1). Nenhuma migração de schema necessária (campos já existiam).
 - ✅ **RN-13, RN-20, RN-22** — testadas ponta a ponta contra a infra real (ver §16.1). `AcademicService.updateExpiredStatuses()` (RN-13), `NotificationsCron.checkCourseInactivity()` (RN-20) e `checkAnacCommunicationDeadlines()` (RN-22) invocados diretamente via `NestFactory.createApplicationContext(AppModule)` contra Supabase/Upstash reais. Fixtures cobriram os limiares exatos: qualificação vencida há 10 dias, curso inativo há 190 dias (→ deveria suspender) e há 160 dias (→ deveria só alertar), `SemestralReport` com deadline em 45 dias (dentro da janela de 60). Resultado: `{ qualifications: 1, enrollments: 1 }` atualizados por RN-13; os 2 jobs `course-inactive` (um `SUSPENSO`, um `ALERTA_INATIVIDADE`) e o job `anac-communication` foram enfileirados corretamente na fila BullMQ real; os status em banco confirmaram exatamente o esperado. **Nenhum bug encontrado** — a implementação já estava correta.
 
 ## 13. Bugs reais encontrados e corrigidos nesta rodada de validação
@@ -145,6 +149,7 @@ Todos com commit próprio (`git log` tem a mensagem completa e o racional). Resu
 7. `moduleResolution` depreciado (`node`/`node10`) nos tsconfigs → migrado para `module: "node16"`.
 8. **RN-05 era impossível de satisfazer**: `CreateExamDto` não tinha campo `result` (exame sempre ficava `PENDENTE`), e não existia nenhum endpoint para registrar `Attendance`. Ambos corrigidos.
 9. **IDOR sistêmico**: toda criação de entidade "filha" (ex.: `ClientUnit.client_id`, `Enrollment.student_id`, `Risk.hazard_id`) confiava no ID vindo do cliente sem checar `organization_id`. Corrigido em `clients`, `contracts`, `crm`, `financial`, `sgq`, `sgso`, `academic`.
+10. **`CrmService.createProposal` exigia uma `Account` mesmo com `account_id` opcional no DTO** — qualquer proposta sem conta vinculada (o caso comum) sempre retornava 404 "Account not found". Corrigido para só validar quando `account_id` é informado.
 
 ## 14. Armadilhas conhecidas (não redescobrir)
 
@@ -168,13 +173,12 @@ Para validar qualquer endpoint/regra de negócio contra a infra real:
 
 ## 16. Próximos passos sugeridos (em ordem de valor)
 
-1. Considerar regras de negócio para clients/crm/contracts/financial (hoje sem RN numeradas).
-2. Configurar Sentry de verdade (hoje é placeholder em `.env`).
-3. Se for para produção: revisar CORS (`app.enableCors()` está aberto sem allowlist) e configurar domínio(s) permitido(s).
+1. Configurar Sentry de verdade (hoje é placeholder em `.env`).
+2. Se for para produção: revisar CORS (`app.enableCors()` está aberto sem allowlist) e configurar domínio(s) permitido(s).
 
 ### 16.1. Como testar crons/jobs agendados ponta a ponta (sem esperar o schedule)
 
-Os handlers de `@Cron(...)` (`academic.cron.ts`, `notifications.cron.ts`) não são endpoints HTTP — para exercitá-los de verdade sem esperar `EVERY_DAY_AT_*AM`:
+Os handlers de `@Cron(...)` (`academic.cron.ts`, `notifications.cron.ts`, `financial.cron.ts`) não são endpoints HTTP — para exercitá-los de verdade sem esperar `EVERY_DAY_AT_*AM`:
 
 1. `npm run build:shared && npm run build --workspace=apps/api` (gera `apps/api/dist/`).
 2. Criar um script Node temporário em `apps/api/` (fora de `apps/api/`, os `require()` de pacotes do workspace não resolvem — precisa rodar de dentro do diretório do app) que:
