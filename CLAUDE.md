@@ -100,3 +100,70 @@ docker compose up -d        # sobe Redis local para BullMQ
 - DTOs validados com `class-validator` em todos os endpoints.
 - Documentação OpenAPI/Swagger disponível em `/api/docs`.
 - Login é feito **client-side** via `supabase-js`; a API nunca implementa endpoint de login, apenas valida o JWT emitido pelo Supabase Auth.
+
+## 11. Estado atual da infraestrutura (real, não placeholder)
+
+O projeto **não está mais em estágio de scaffold**. Existe um projeto Supabase real provisionado e um Redis gerenciado real, ambos configurados em `.env` (nunca commitado). Qualquer sessão nova pode assumir que:
+
+- **Supabase**: projeto `orion-flight-lab`, ref `oelepfnnnwchmubhazad`, região `sa-east-1`. Acessível via as tools MCP `mcp__claude_ai_Supabase__*` (já autenticado) — use esse `project_id` diretamente, não precisa rodar `list_projects` de novo.
+  - Schema completo migrado (`npx prisma migrate dev`), ~62 tabelas, RLS habilitado em 100%, buckets de Storage criados (`regulatory-docs`, `certificates`, `contracts`, `student-docs`, `instructor-docs`, todos privados).
+  - Advisor de segurança do Supabase (`get_advisors`) rodado e limpo (só resta 1 INFO esperado sobre `_prisma_migrations`).
+- **Redis**: Upstash real configurado em `REDIS_URL` (`rediss://`, TLS). BullMQ testado ponta a ponta com jobs reais.
+- **Banco de dados fica sempre vazio em repouso** — toda vez que uma sessão cria dados de teste (organização, alunos, etc.) para validar algo, eles devem ser **removidos ao final** (ver §15). Se você encontrar `organizations` com `count > 0`, isso é resíduo de uma sessão anterior que não limpou — pode apagar.
+- Local: `npm run dev:api` e `npm run dev:web` (a partir da raiz) sobem API (porta 3001) e web (porta 3000) contra o Supabase/Redis reais. Não há Postgres/Redis local neste ambiente — não use `docker compose up`, ele não foi testado neste sandbox (Docker não está disponível aqui).
+
+## 12. Status de validação por módulo
+
+Testado **ponta a ponta contra a infraestrutura real** (não é só `lint`/`typecheck` limpos — foi exercitado de verdade com dados reais e limpo depois):
+
+- ✅ **academic** — RN-05 (certificado), RN-07 (quarentena de fraude), RN-11 (limite de turma). Fluxo completo: aluno → matrícula → frequência → exames aprovados → certificado real no bucket `certificates`.
+- ✅ **personnel** — RN-15 (8h/24h), RN-16 (janela de 45 dias), RN-17/RN-18 (máx. 2 qualificações).
+- ✅ **documents** — versionamento (v1→v2), diff, upload real no bucket `regulatory-docs`.
+- ✅ **notifications** — BullMQ + Upstash real, cron de produção (`checkQualificationExpiry`) rodado de ponta a ponta.
+- ✅ **auth** — guard JWKS, `/auth/me`, RBAC.
+- ✅ **reports** — `/reports/dashboard-summary` (KPIs reais do dashboard).
+- ✅ **frontend** — login, dashboard, students, personnel, documents, qualifications renderizados de verdade no Chromium headless (Playwright), zero erros de console, middleware de proteção de rota testado.
+- ✅ **segurança multi-tenant** — auditoria de IDOR completa (escrita e leitura) em todos os módulos; ver §13.
+- ⚠️ **sgq / sgso / clients / crm / contracts / financial** — só CRUD base validado estruturalmente (lint/typecheck/IDOR), **sem** regras de negócio específicas testadas (porque não há RNs numeradas definidas para eles ainda além do isolamento multi-tenant).
+- ⚠️ **RN-13, RN-20, RN-22** — implementadas no cron (`academic.cron.ts` / `notifications.cron.ts`) mas não testadas ponta a ponta ainda.
+
+## 13. Bugs reais encontrados e corrigidos nesta rodada de validação
+
+Todos com commit próprio (`git log` tem a mensagem completa e o racional). Resumo para orientação rápida:
+
+1. `packages/shared` distribuía TS cru → Node 24 quebrava o boot da API (agora compila para `dist/`).
+2. `DATABASE_URL` sem `pgbouncer=true` → erro "prepared statement already exists" no pooler do Supabase.
+3. `AuditLogInterceptor` nunca registrado globalmente → RN-24 era um no-op silencioso.
+4. `SUPABASE_URL` com sufixo `/rest/v1/` indevido → quebrava todo upload de Storage.
+5. Auth guard usava HS256 com segredo compartilhado → Supabase real assina com ES256/JWKS; reescrito para verificar via `/auth/v1/.well-known/jwks.json` (**`SUPABASE_JWT_SECRET` não é mais lido pela API**).
+6. BullMQ sem `tls` e sem `username` na conexão Redis → falhava contra Upstash (`rediss://`, ACL de 2 argumentos).
+7. `moduleResolution` depreciado (`node`/`node10`) nos tsconfigs → migrado para `module: "node16"`.
+8. **RN-05 era impossível de satisfazer**: `CreateExamDto` não tinha campo `result` (exame sempre ficava `PENDENTE`), e não existia nenhum endpoint para registrar `Attendance`. Ambos corrigidos.
+9. **IDOR sistêmico**: toda criação de entidade "filha" (ex.: `ClientUnit.client_id`, `Enrollment.student_id`, `Risk.hazard_id`) confiava no ID vindo do cliente sem checar `organization_id`. Corrigido em `clients`, `contracts`, `crm`, `financial`, `sgq`, `sgso`, `academic`.
+
+## 14. Armadilhas conhecidas (não redescobrir)
+
+- **JWT de teste não pode ser assinado à mão** (`jwt.sign(payload, SUPABASE_JWT_SECRET)`) — desde o bug #5 acima, o guard só aceita tokens reais emitidos pelo Supabase Auth (ES256 via JWKS). Para testar endpoints protegidos, sempre: criar usuário real via `supabase.auth.admin.createUser({ app_metadata: { organization_id, roles } })` e depois `supabase.auth.signInWithPassword(...)` (client `anon`) para pegar um `access_token` de verdade.
+- **`SUPABASE_URL`** deve ser só a URL base do projeto (`https://xxx.supabase.co`), nunca com `/rest/v1/` no final.
+- **`DATABASE_URL`** (pooler, porta 6543) precisa de `?pgbouncer=true`. **`DIRECT_URL`** (porta 5432) não.
+- Prisma bypassa RLS (conecta como owner) — a defesa multi-tenant real está 100% na camada de aplicação (`organization_id` explícito em todo `where`), não na RLS. RLS é defesa em profundidade para acesso direto via REST/anon key, não a linha de defesa principal do backend.
+- `npm run dev:api` / `dev:web` fazem `npm run build:shared` antes (necessário — `@orion/shared` precisa estar compilado em `dist/`).
+
+## 15. Metodologia de teste ponta a ponta (replicar em sessões futuras)
+
+Para validar qualquer endpoint/regra de negócio contra a infra real:
+
+1. Criar organização de teste via `mcp__claude_ai_Supabase__execute_sql` (sempre incluir `updated_at` nos inserts manuais — não tem default no banco).
+2. Criar usuário real: `supabase.auth.admin.createUser({ app_metadata: { organization_id, roles: [...] } })` + inserir `user_profiles` com o mesmo `id`.
+3. Pegar token real: `supabase.auth.signInWithPassword(...)` com o client `anon`.
+4. Subir API/web (`npm run dev:api` / `dev:web`), testar via `curl` com `Authorization: Bearer <token>` ou via Playwright (`chromium.launch`) para o frontend.
+5. **Sempre limpar ao final**: apagar as linhas criadas (ordem inversa das FKs) e `supabase.auth.admin.deleteUser(...)`. Confirmar `select count(*) from organizations` = 0 antes de encerrar.
+6. Rodar `npm run lint && npm run typecheck` antes de qualquer commit.
+
+## 16. Próximos passos sugeridos (em ordem de valor)
+
+1. Testar RN-13, RN-20, RN-22 ponta a ponta (crons ainda não exercitados de verdade).
+2. Definir e implementar regras de negócio específicas para SGQ/SGSO (hoje só têm CRUD genérico).
+3. Considerar regras de negócio para clients/crm/contracts/financial (hoje sem RN numeradas).
+4. Configurar Sentry de verdade (hoje é placeholder em `.env`).
+5. Se for para produção: revisar CORS (`app.enableCors()` está aberto sem allowlist) e configurar domínio(s) permitido(s).
