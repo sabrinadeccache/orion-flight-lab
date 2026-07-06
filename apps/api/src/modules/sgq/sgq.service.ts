@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Audit, AuditProgram, CorrectiveAction, NonConformity } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CreateAuditProgramDto } from './dto/create-audit-program.dto';
@@ -65,6 +65,32 @@ export class SgqService {
     });
   }
 
+  /**
+   * RN-25: a non-conformity can only be closed once every corrective action
+   * linked to it has been completed — and at least one must exist.
+   */
+  async closeNonConformity(organizationId: string, id: string): Promise<NonConformity> {
+    const nonConformity = await this.prisma.nonConformity.findFirst({
+      where: { id, organization_id: organizationId, deleted_at: null },
+      include: { correctiveActions: { where: { deleted_at: null } } },
+    });
+    if (!nonConformity) {
+      throw new NotFoundException('Non-conformity not found');
+    }
+
+    const hasOpenActions = nonConformity.correctiveActions.some(
+      (action) => action.status !== 'concluida',
+    );
+    if (nonConformity.correctiveActions.length === 0 || hasOpenActions) {
+      throw new BadRequestException(
+        'Cannot close non-conformity: it has no completed corrective action covering it (RN-25)',
+      );
+    }
+
+    return this.prisma.nonConformity.update({ where: { id }, data: { status: 'fechada' } });
+  }
+
+  /** RN-26: a corrective action cannot be created already past its own due date. */
   async createCorrectiveAction(
     organizationId: string,
     dto: CreateCorrectiveActionDto,
@@ -77,6 +103,11 @@ export class SgqService {
         }),
       'Non-conformity',
     );
+
+    if (dto.due_date && new Date(dto.due_date) < new Date()) {
+      throw new BadRequestException('Corrective action due date cannot be in the past (RN-26)');
+    }
+
     return this.prisma.correctiveAction.create({
       data: {
         organization_id: organizationId,
@@ -85,6 +116,21 @@ export class SgqService {
         responsible: dto.responsible,
         due_date: dto.due_date ? new Date(dto.due_date) : undefined,
       },
+    });
+  }
+
+  /** Marks a corrective action complete — precondition for RN-25. */
+  async completeCorrectiveAction(organizationId: string, id: string): Promise<CorrectiveAction> {
+    const action = await this.prisma.correctiveAction.findFirst({
+      where: { id, organization_id: organizationId, deleted_at: null },
+    });
+    if (!action) {
+      throw new NotFoundException('Corrective action not found');
+    }
+
+    return this.prisma.correctiveAction.update({
+      where: { id },
+      data: { status: 'concluida', closed_at: new Date() },
     });
   }
 

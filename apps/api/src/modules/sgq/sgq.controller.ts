@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { SupabaseAuthGuard } from '../auth/guards/supabase-auth.guard';
 import { OrganizationGuard } from '../auth/guards/organization.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -48,6 +48,12 @@ export class SgqController {
     return this.sgqService.findNonConformities(user.organizationId);
   }
 
+  @Patch('non-conformities/:id/close')
+  @AuditLog({ action: 'update', entity: 'NonConformity' })
+  closeNonConformity(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.sgqService.closeNonConformity(user.organizationId, id);
+  }
+
   @Post('corrective-actions')
   @AuditLog({ action: 'create', entity: 'CorrectiveAction' })
   createCorrectiveAction(
@@ -55,5 +61,11 @@ export class SgqController {
     @Body() dto: CreateCorrectiveActionDto,
   ) {
     return this.sgqService.createCorrectiveAction(user.organizationId, dto);
+  }
+
+  @Patch('corrective-actions/:id/complete')
+  @AuditLog({ action: 'update', entity: 'CorrectiveAction' })
+  completeCorrectiveAction(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.sgqService.completeCorrectiveAction(user.organizationId, id);
   }
 }
