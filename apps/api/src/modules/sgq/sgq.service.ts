@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { Audit, AuditProgram, CorrectiveAction, NonConformity } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CreateAuditProgramDto } from './dto/create-audit-program.dto';
@@ -20,7 +20,15 @@ export class SgqService {
     });
   }
 
-  createAudit(organizationId: string, dto: CreateAuditDto): Promise<Audit> {
+  async createAudit(organizationId: string, dto: CreateAuditDto): Promise<Audit> {
+    await this.assertExists(
+      () =>
+        this.prisma.auditProgram.findFirst({
+          where: { id: dto.audit_program_id, organization_id: organizationId, deleted_at: null },
+          select: { id: true },
+        }),
+      'Audit program',
+    );
     return this.prisma.audit.create({
       data: {
         organization_id: organizationId,
@@ -36,10 +44,18 @@ export class SgqService {
     return this.prisma.audit.findMany({ where: { organization_id: organizationId, deleted_at: null } });
   }
 
-  createNonConformity(
+  async createNonConformity(
     organizationId: string,
     dto: CreateNonConformityDto,
   ): Promise<NonConformity> {
+    await this.assertExists(
+      () =>
+        this.prisma.audit.findFirst({
+          where: { id: dto.audit_id, organization_id: organizationId, deleted_at: null },
+          select: { id: true },
+        }),
+      'Audit',
+    );
     return this.prisma.nonConformity.create({ data: { organization_id: organizationId, ...dto } });
   }
 
@@ -49,10 +65,18 @@ export class SgqService {
     });
   }
 
-  createCorrectiveAction(
+  async createCorrectiveAction(
     organizationId: string,
     dto: CreateCorrectiveActionDto,
   ): Promise<CorrectiveAction> {
+    await this.assertExists(
+      () =>
+        this.prisma.nonConformity.findFirst({
+          where: { id: dto.non_conformity_id, organization_id: organizationId, deleted_at: null },
+          select: { id: true },
+        }),
+      'Non-conformity',
+    );
     return this.prisma.correctiveAction.create({
       data: {
         organization_id: organizationId,
@@ -62,5 +86,14 @@ export class SgqService {
         due_date: dto.due_date ? new Date(dto.due_date) : undefined,
       },
     });
+  }
+
+  /** Prevents linking a record to another organization's parent entity. */
+  private async assertExists(
+    finder: () => Promise<{ id: string } | null>,
+    label: string,
+  ): Promise<void> {
+    const record = await finder();
+    if (!record) throw new NotFoundException(`${label} not found`);
   }
 }

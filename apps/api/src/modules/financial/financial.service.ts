@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { Charge, Delinquency, Payment } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CreateChargeDto } from './dto/create-charge.dto';
@@ -8,7 +8,25 @@ import { CreatePaymentDto } from './dto/create-payment.dto';
 export class FinancialService {
   constructor(private readonly prisma: PrismaService) {}
 
-  createCharge(organizationId: string, dto: CreateChargeDto): Promise<Charge> {
+  async createCharge(organizationId: string, dto: CreateChargeDto): Promise<Charge> {
+    await this.assertExists(
+      () =>
+        this.prisma.client.findFirst({
+          where: { id: dto.client_id, organization_id: organizationId, deleted_at: null },
+          select: { id: true },
+        }),
+      'Client',
+    );
+    if (dto.contract_id) {
+      await this.assertExists(
+        () =>
+          this.prisma.contract.findFirst({
+            where: { id: dto.contract_id, organization_id: organizationId, deleted_at: null },
+            select: { id: true },
+          }),
+        'Contract',
+      );
+    }
     return this.prisma.charge.create({
       data: {
         organization_id: organizationId,
@@ -25,7 +43,15 @@ export class FinancialService {
     return this.prisma.charge.findMany({ where: { organization_id: organizationId, deleted_at: null } });
   }
 
-  createPayment(organizationId: string, dto: CreatePaymentDto): Promise<Payment> {
+  async createPayment(organizationId: string, dto: CreatePaymentDto): Promise<Payment> {
+    await this.assertExists(
+      () =>
+        this.prisma.charge.findFirst({
+          where: { id: dto.charge_id, organization_id: organizationId, deleted_at: null },
+          select: { id: true },
+        }),
+      'Charge',
+    );
     return this.prisma.payment.create({
       data: { organization_id: organizationId, ...dto },
     });
@@ -36,5 +62,14 @@ export class FinancialService {
       where: { organization_id: organizationId, deleted_at: null },
       include: { charge: true },
     });
+  }
+
+  /** Prevents linking a record to another organization's parent entity. */
+  private async assertExists(
+    finder: () => Promise<{ id: string } | null>,
+    label: string,
+  ): Promise<void> {
+    const record = await finder();
+    if (!record) throw new NotFoundException(`${label} not found`);
   }
 }

@@ -26,11 +26,22 @@ export class ClientsService {
     return client;
   }
 
-  createClientUnit(organizationId: string, dto: CreateClientUnitDto): Promise<ClientUnit> {
+  async createClientUnit(organizationId: string, dto: CreateClientUnitDto): Promise<ClientUnit> {
+    await this.assertClientInOrg(organizationId, dto.client_id);
     return this.prisma.clientUnit.create({ data: { organization_id: organizationId, ...dto } });
   }
 
-  createContact(organizationId: string, dto: CreateContactDto): Promise<Contact> {
+  async createContact(organizationId: string, dto: CreateContactDto): Promise<Contact> {
+    await this.assertClientInOrg(organizationId, dto.client_id);
     return this.prisma.contact.create({ data: { organization_id: organizationId, ...dto } });
+  }
+
+  /** Prevents linking a unit/contact to another organization's client. */
+  private async assertClientInOrg(organizationId: string, clientId: string): Promise<void> {
+    const client = await this.prisma.client.findFirst({
+      where: { id: clientId, organization_id: organizationId, deleted_at: null },
+      select: { id: true },
+    });
+    if (!client) throw new NotFoundException('Client not found');
   }
 }

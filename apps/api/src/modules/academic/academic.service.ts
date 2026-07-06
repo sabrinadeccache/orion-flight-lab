@@ -48,6 +48,13 @@ export class AcademicService {
 
   /** RN-11: enrollment is blocked once the course reaches 25 active students. */
   async createEnrollment(organizationId: string, dto: CreateEnrollmentDto): Promise<Enrollment> {
+    const student = await this.prisma.student.findFirst({
+      where: { id: dto.student_id, organization_id: organizationId, deleted_at: null },
+    });
+    if (!student) {
+      throw new NotFoundException('Student not found');
+    }
+
     const course = await this.prisma.course.findFirst({
       where: { id: dto.course_id, organization_id: organizationId, deleted_at: null },
     });
@@ -133,6 +140,13 @@ export class AcademicService {
     });
     if (!enrollment) {
       throw new NotFoundException('Enrollment not found');
+    }
+
+    const lesson = await this.prisma.lesson.findFirst({
+      where: { id: dto.lesson_id, organization_id: organizationId, deleted_at: null },
+    });
+    if (!lesson) {
+      throw new NotFoundException('Lesson not found');
     }
 
     return this.prisma.attendance.create({
