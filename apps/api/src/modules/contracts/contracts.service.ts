@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Contract, ContractAmendment, Plan, Subscription } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CreateContractDto } from './dto/create-contract.dto';
@@ -65,15 +65,20 @@ export class ContractsService {
     return this.prisma.plan.findMany({ where: { organization_id: organizationId, deleted_at: null } });
   }
 
+  /** RN-29: a subscription can only be created against an active contract. */
   async createSubscription(organizationId: string, dto: CreateSubscriptionDto): Promise<Subscription> {
-    await this.assertExists(
-      () =>
-        this.prisma.contract.findFirst({
-          where: { id: dto.contract_id, organization_id: organizationId, deleted_at: null },
-          select: { id: true },
-        }),
-      'Contract',
-    );
+    const contract = await this.prisma.contract.findFirst({
+      where: { id: dto.contract_id, organization_id: organizationId, deleted_at: null },
+      select: { id: true, status: true },
+    });
+    if (!contract) {
+      throw new NotFoundException('Contract not found');
+    }
+    if (contract.status !== 'ativo') {
+      throw new BadRequestException(
+        `Cannot create a subscription for a contract with status "${contract.status}" (RN-29)`,
+      );
+    }
     await this.assertExists(
       () =>
         this.prisma.plan.findFirst({
