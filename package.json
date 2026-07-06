@@ -7,9 +7,9 @@
     "packages/*"
   ],
   "scripts": {
-    "lint": "eslint . --ext .ts,.tsx",
-    "lint:fix": "eslint . --ext .ts,.tsx --fix",
-    "typecheck": "npm run typecheck --workspace=packages/shared && npm run typecheck --workspace=apps/api && npm run typecheck --workspace=apps/web",
+    "lint": "npm run build:shared && eslint . --ext .ts,.tsx",
+    "lint:fix": "npm run build:shared && eslint . --ext .ts,.tsx --fix",
+    "typecheck": "npm run build:shared && npm run typecheck --workspace=packages/shared && npm run typecheck --workspace=apps/api && npm run typecheck --workspace=apps/web",
     "build:shared": "npm run build --workspace=packages/shared",
     "dev:web": "npm run build:shared && npm run dev --workspace=apps/web",
     "dev:api": "npm run build:shared && npm run dev --workspace=apps/api",
