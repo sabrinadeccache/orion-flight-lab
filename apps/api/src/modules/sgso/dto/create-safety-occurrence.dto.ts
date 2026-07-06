@@ -1,4 +1,4 @@
-import { IsDateString, IsOptional, IsString } from 'class-validator';
+import { IsDateString, IsOptional, IsString, IsUUID } from 'class-validator';
 
 export class CreateSafetyOccurrenceDto {
   @IsString()
@@ -10,4 +10,8 @@ export class CreateSafetyOccurrenceDto {
   @IsOptional()
   @IsString()
   severity?: string;
+
+  @IsOptional()
+  @IsUUID()
+  hazard_id?: string;
 }

@@ -981,7 +981,8 @@ model Hazard {
   updated_at      DateTime     @updatedAt
   deleted_at      DateTime?
 
-  risks Risk[]
+  risks             Risk[]
+  safetyOccurrences SafetyOccurrence[]
 
   @@index([organization_id])
   @@map("hazards")
@@ -996,6 +997,8 @@ model Risk {
   probability     Int
   severity        Int
   risk_level      String?
+  /// RN-27: "aceito"/"mitigado" only reachable once a Mitigation exists, when risk_level is high.
+  status          String       @default("identificado")
   created_at      DateTime     @default(now())
   updated_at      DateTime     @updatedAt
   deleted_at      DateTime?
@@ -1064,6 +1067,9 @@ model SafetyOccurrence {
   description     String
   occurred_at     DateTime
   severity        String?
+  /// RN-28: mandatory for "alta"/"critica" severity — links the reactive SMS investigation.
+  hazard_id       String?      @db.Uuid
+  hazard          Hazard?      @relation(fields: [hazard_id], references: [id])
   reported_by     String?      @db.Uuid
   status          String       @default("aberta")
   created_at      DateTime     @default(now())

@@ -1,10 +1,16 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Hazard, Mitigation, Risk, SafetyOccurrence } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CreateHazardDto } from './dto/create-hazard.dto';
 import { CreateRiskDto } from './dto/create-risk.dto';
 import { CreateMitigationDto } from './dto/create-mitigation.dto';
 import { CreateSafetyOccurrenceDto } from './dto/create-safety-occurrence.dto';
+import { UpdateRiskStatusDto } from './dto/update-risk-status.dto';
+
+/** RN-27: probability x severity >= this, on the 5x5 matrix, is a "high" risk. */
+const HIGH_RISK_THRESHOLD = 15;
+/** RN-28: severities that mandate a linked hazard for reactive SMS investigation. */
+const MANDATORY_HAZARD_SEVERITIES = ['alta', 'critica'];
 
 @Injectable()
 export class SgsoService {
@@ -37,6 +43,33 @@ export class SgsoService {
     return this.prisma.risk.findMany({ where: { organization_id: organizationId, deleted_at: null } });
   }
 
+  /**
+   * RN-27: a high-risk (probability x severity >= 15) can only move to
+   * "aceito"/"mitigado" once at least one mitigation has been registered.
+   */
+  async updateRiskStatus(
+    organizationId: string,
+    id: string,
+    dto: UpdateRiskStatusDto,
+  ): Promise<Risk> {
+    const risk = await this.prisma.risk.findFirst({
+      where: { id, organization_id: organizationId, deleted_at: null },
+      include: { mitigations: { where: { deleted_at: null } } },
+    });
+    if (!risk) {
+      throw new NotFoundException('Risk not found');
+    }
+
+    const isHighRisk = risk.probability * risk.severity >= HIGH_RISK_THRESHOLD;
+    if (isHighRisk && risk.mitigations.length === 0) {
+      throw new BadRequestException(
+        'Cannot accept/mitigate a high-level risk without a registered mitigation (RN-27)',
+      );
+    }
+
+    return this.prisma.risk.update({ where: { id }, data: { status: dto.status } });
+  }
+
   async createMitigation(organizationId: string, dto: CreateMitigationDto): Promise<Mitigation> {
     await this.assertExists(
       () =>
@@ -49,16 +82,36 @@ export class SgsoService {
     return this.prisma.mitigation.create({ data: { organization_id: organizationId, ...dto } });
   }
 
-  createSafetyOccurrence(
+  /** RN-28: "alta"/"critica" severity occurrences must link a hazard for reactive SMS investigation. */
+  async createSafetyOccurrence(
     organizationId: string,
     dto: CreateSafetyOccurrenceDto,
   ): Promise<SafetyOccurrence> {
+    const severity = dto.severity?.toLowerCase();
+    if (severity && MANDATORY_HAZARD_SEVERITIES.includes(severity) && !dto.hazard_id) {
+      throw new BadRequestException(
+        'Occurrences of "alta"/"critica" severity must link a hazard for investigation (RN-28)',
+      );
+    }
+
+    if (dto.hazard_id) {
+      await this.assertExists(
+        () =>
+          this.prisma.hazard.findFirst({
+            where: { id: dto.hazard_id, organization_id: organizationId, deleted_at: null },
+            select: { id: true },
+          }),
+        'Hazard',
+      );
+    }
+
     return this.prisma.safetyOccurrence.create({
       data: {
         organization_id: organizationId,
         description: dto.description,
         occurred_at: new Date(dto.occurred_at),
         severity: dto.severity,
+        hazard_id: dto.hazard_id,
       },
     });
   }

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { SupabaseAuthGuard } from '../auth/guards/supabase-auth.guard';
 import { OrganizationGuard } from '../auth/guards/organization.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -9,6 +9,7 @@ import { CreateHazardDto } from './dto/create-hazard.dto';
 import { CreateRiskDto } from './dto/create-risk.dto';
 import { CreateMitigationDto } from './dto/create-mitigation.dto';
 import { CreateSafetyOccurrenceDto } from './dto/create-safety-occurrence.dto';
+import { UpdateRiskStatusDto } from './dto/update-risk-status.dto';
 
 @Controller('sgso')
 @UseGuards(SupabaseAuthGuard, OrganizationGuard)
@@ -35,6 +36,16 @@ export class SgsoController {
   @Get('risks')
   findRisks(@CurrentUser() user: AuthenticatedUser) {
     return this.sgsoService.findRisks(user.organizationId);
+  }
+
+  @Patch('risks/:id/status')
+  @AuditLog({ action: 'update', entity: 'Risk' })
+  updateRiskStatus(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateRiskStatusDto,
+  ) {
+    return this.sgsoService.updateRiskStatus(user.organizationId, id, dto);
   }
 
   @Post('mitigations')
