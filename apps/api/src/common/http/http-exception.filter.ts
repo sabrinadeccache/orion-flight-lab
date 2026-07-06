@@ -7,6 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Response } from 'express';
+import * as Sentry from '@sentry/nestjs';
 import { ApiError, ApiResponse } from '@orion/shared';
 
 /** Formats every thrown error (HttpException or otherwise) into `{ data, meta, errors }`. */
@@ -27,6 +28,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
     if (status >= HttpStatus.INTERNAL_SERVER_ERROR) {
       this.logger.error(exception instanceof Error ? exception.stack : exception);
+      Sentry.captureException(exception);
     }
 
     const body: ApiResponse<null> = { data: null, meta: null, errors };
