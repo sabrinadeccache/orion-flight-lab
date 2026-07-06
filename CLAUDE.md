@@ -125,7 +125,7 @@ Testado **ponta a ponta contra a infraestrutura real** (não é só `lint`/`type
 - ✅ **frontend** — login, dashboard, students, personnel, documents, qualifications renderizados de verdade no Chromium headless (Playwright), zero erros de console, middleware de proteção de rota testado.
 - ✅ **segurança multi-tenant** — auditoria de IDOR completa (escrita e leitura) em todos os módulos; ver §13.
 - ⚠️ **sgq / sgso / clients / crm / contracts / financial** — só CRUD base validado estruturalmente (lint/typecheck/IDOR), **sem** regras de negócio específicas testadas (porque não há RNs numeradas definidas para eles ainda além do isolamento multi-tenant).
-- ⚠️ **RN-13, RN-20, RN-22** — implementadas no cron (`academic.cron.ts` / `notifications.cron.ts`) mas não testadas ponta a ponta ainda.
+- ✅ **RN-13, RN-20, RN-22** — testadas ponta a ponta contra a infra real (ver §16.1). `AcademicService.updateExpiredStatuses()` (RN-13), `NotificationsCron.checkCourseInactivity()` (RN-20) e `checkAnacCommunicationDeadlines()` (RN-22) invocados diretamente via `NestFactory.createApplicationContext(AppModule)` contra Supabase/Upstash reais. Fixtures cobriram os limiares exatos: qualificação vencida há 10 dias, curso inativo há 190 dias (→ deveria suspender) e há 160 dias (→ deveria só alertar), `SemestralReport` com deadline em 45 dias (dentro da janela de 60). Resultado: `{ qualifications: 1, enrollments: 1 }` atualizados por RN-13; os 2 jobs `course-inactive` (um `SUSPENSO`, um `ALERTA_INATIVIDADE`) e o job `anac-communication` foram enfileirados corretamente na fila BullMQ real; os status em banco confirmaram exatamente o esperado. **Nenhum bug encontrado** — a implementação já estava correta.
 
 ## 13. Bugs reais encontrados e corrigidos nesta rodada de validação
 
@@ -162,8 +162,20 @@ Para validar qualquer endpoint/regra de negócio contra a infra real:
 
 ## 16. Próximos passos sugeridos (em ordem de valor)
 
-1. Testar RN-13, RN-20, RN-22 ponta a ponta (crons ainda não exercitados de verdade).
-2. Definir e implementar regras de negócio específicas para SGQ/SGSO (hoje só têm CRUD genérico).
-3. Considerar regras de negócio para clients/crm/contracts/financial (hoje sem RN numeradas).
-4. Configurar Sentry de verdade (hoje é placeholder em `.env`).
-5. Se for para produção: revisar CORS (`app.enableCors()` está aberto sem allowlist) e configurar domínio(s) permitido(s).
+1. Definir e implementar regras de negócio específicas para SGQ/SGSO (hoje só têm CRUD genérico).
+2. Considerar regras de negócio para clients/crm/contracts/financial (hoje sem RN numeradas).
+3. Configurar Sentry de verdade (hoje é placeholder em `.env`).
+4. Se for para produção: revisar CORS (`app.enableCors()` está aberto sem allowlist) e configurar domínio(s) permitido(s).
+
+### 16.1. Como testar crons/jobs agendados ponta a ponta (sem esperar o schedule)
+
+Os handlers de `@Cron(...)` (`academic.cron.ts`, `notifications.cron.ts`) não são endpoints HTTP — para exercitá-los de verdade sem esperar `EVERY_DAY_AT_*AM`:
+
+1. `npm run build:shared && npm run build --workspace=apps/api` (gera `apps/api/dist/`).
+2. Criar um script Node temporário em `apps/api/` (fora de `apps/api/`, os `require()` de pacotes do workspace não resolvem — precisa rodar de dentro do diretório do app) que:
+   - Carrega `.env` manualmente (parse simples de `KEY=VALUE`, não há `dotenv` como dependência do projeto).
+   - `const app = await NestFactory.createApplicationContext(AppModule)`.
+   - Pega o serviço/cron via `app.get(...)` e chama o método do handler diretamente (ex.: `academicService.updateExpiredStatuses()`, `notificationsCron.checkCourseInactivity()`).
+   - Para inspecionar jobs do BullMQ sem que o `NotificationsProcessor` já consuma: `app.get(getQueueToken(NOTIFICATIONS_QUEUE))`, `queue.pause()` antes de rodar os crons, depois `queue.getJobs(['waiting','delayed','paused'])`.
+3. Apagar o script ao final (não commitar) — foi só instrumentação de teste, não faz parte do produto.
+4. Fixtures de banco via `execute_sql` direto, com os valores exatamente nos limiares das RNs (ex.: `last_activity_at = now() - interval '190 days'` para RN-20 suspender, `'160 days'` para só alertar).
