@@ -1,9 +1,13 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Account, Pipeline, Proposal } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CreateAccountDto } from './dto/create-account.dto';
 import { CreateProposalDto } from './dto/create-proposal.dto';
 import { CreatePipelineDto } from './dto/create-pipeline.dto';
+import { UpdatePipelineStageDto } from './dto/update-pipeline-stage.dto';
+
+/** RN-30: a pipeline can't be marked won on an expired or declined proposal. */
+const WON_STAGE = 'ganho';
 
 @Injectable()
 export class CrmService {
@@ -34,14 +38,16 @@ export class CrmService {
         }),
       'Client',
     );
-    await this.assertExists(
-      () =>
-        this.prisma.account.findFirst({
-          where: { id: dto.account_id, organization_id: organizationId, deleted_at: null },
-          select: { id: true },
-        }),
-      'Account',
-    );
+    if (dto.account_id) {
+      await this.assertExists(
+        () =>
+          this.prisma.account.findFirst({
+            where: { id: dto.account_id, organization_id: organizationId, deleted_at: null },
+            select: { id: true },
+          }),
+        'Account',
+      );
+    }
     return this.prisma.proposal.create({
       data: {
         organization_id: organizationId,
@@ -80,6 +86,32 @@ export class CrmService {
 
   findPipelines(organizationId: string): Promise<Pipeline[]> {
     return this.prisma.pipeline.findMany({ where: { organization_id: organizationId, deleted_at: null } });
+  }
+
+  /** RN-30: winning a pipeline requires its proposal to still be open and unexpired. */
+  async updatePipelineStage(
+    organizationId: string,
+    id: string,
+    dto: UpdatePipelineStageDto,
+  ): Promise<Pipeline> {
+    const pipeline = await this.prisma.pipeline.findFirst({
+      where: { id, organization_id: organizationId, deleted_at: null },
+      include: { proposal: true },
+    });
+    if (!pipeline) {
+      throw new NotFoundException('Pipeline not found');
+    }
+
+    if (dto.stage === WON_STAGE && pipeline.proposal) {
+      const isExpired = pipeline.proposal.valid_until && pipeline.proposal.valid_until < new Date();
+      if (isExpired || pipeline.proposal.status === 'recusada') {
+        throw new BadRequestException(
+          'Cannot mark pipeline as won: linked proposal is expired or declined (RN-30)',
+        );
+      }
+    }
+
+    return this.prisma.pipeline.update({ where: { id }, data: { stage: dto.stage } });
   }
 
   /** Prevents linking a record to another organization's parent entity. */

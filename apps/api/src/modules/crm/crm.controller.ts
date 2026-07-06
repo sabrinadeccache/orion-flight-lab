@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { SupabaseAuthGuard } from '../auth/guards/supabase-auth.guard';
 import { OrganizationGuard } from '../auth/guards/organization.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -8,6 +8,7 @@ import { CrmService } from './crm.service';
 import { CreateAccountDto } from './dto/create-account.dto';
 import { CreateProposalDto } from './dto/create-proposal.dto';
 import { CreatePipelineDto } from './dto/create-pipeline.dto';
+import { UpdatePipelineStageDto } from './dto/update-pipeline-stage.dto';
 
 @Controller('crm')
 @UseGuards(SupabaseAuthGuard, OrganizationGuard)
@@ -45,5 +46,15 @@ export class CrmController {
   @Get('pipelines')
   findPipelines(@CurrentUser() user: AuthenticatedUser) {
     return this.crmService.findPipelines(user.organizationId);
+  }
+
+  @Patch('pipelines/:id/stage')
+  @AuditLog({ action: 'update', entity: 'Pipeline' })
+  updatePipelineStage(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: UpdatePipelineStageDto,
+  ) {
+    return this.crmService.updatePipelineStage(user.organizationId, id, dto);
   }
 }
