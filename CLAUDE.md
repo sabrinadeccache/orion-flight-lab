@@ -56,6 +56,10 @@ Trata-se de um sistema **auditável**: toda ação relevante deve deixar rastro 
 - **RN-20** — Curso inativo é alertado aos 150 dias e suspenso automaticamente aos 180 dias.
 - **RN-22** — Comunicações obrigatórias à ANAC devem ser sinalizadas com 60 dias de antecedência.
 - **RN-24** — Toda ação de escrita relevante gera registro em `audit_log` (imutável).
+- **RN-25** — Não-conformidade (SGQ) só pode ser fechada quando houver pelo menos uma ação corretiva vinculada e todas estiverem concluídas.
+- **RN-26** — Ação corretiva (SGQ) não pode ser criada com `due_date` no passado.
+- **RN-27** — Risco (SGSO) de nível alto (`probability × severity ≥ 15`, matriz 5×5) não pode ser aceito/mitigado sem ao menos uma mitigação registrada.
+- **RN-28** — Ocorrência de segurança (SGSO) de severidade "alta"/"critica" exige um `Hazard` vinculado para investigação reativa do SGSO.
 
 ## 6. Referências regulatórias
 
@@ -124,7 +128,8 @@ Testado **ponta a ponta contra a infraestrutura real** (não é só `lint`/`type
 - ✅ **reports** — `/reports/dashboard-summary` (KPIs reais do dashboard).
 - ✅ **frontend** — login, dashboard, students, personnel, documents, qualifications renderizados de verdade no Chromium headless (Playwright), zero erros de console, middleware de proteção de rota testado.
 - ✅ **segurança multi-tenant** — auditoria de IDOR completa (escrita e leitura) em todos os módulos; ver §13.
-- ⚠️ **sgq / sgso / clients / crm / contracts / financial** — só CRUD base validado estruturalmente (lint/typecheck/IDOR), **sem** regras de negócio específicas testadas (porque não há RNs numeradas definidas para eles ainda além do isolamento multi-tenant).
+- ✅ **sgq / sgso** — RN-25 a RN-28 implementadas e testadas ponta a ponta via HTTP real (API local + token real do Supabase Auth + Postgres real), incluindo os dois casos negativos (bloqueio) e positivos (liberação) de cada regra. Migração real aplicada (`Risk.status`, `SafetyOccurrence.hazard_id`), advisor de segurança limpo depois.
+- ⚠️ **clients / crm / contracts / financial** — só CRUD base validado estruturalmente (lint/typecheck/IDOR), **sem** regras de negócio específicas testadas (porque não há RNs numeradas definidas para eles ainda além do isolamento multi-tenant).
 - ✅ **RN-13, RN-20, RN-22** — testadas ponta a ponta contra a infra real (ver §16.1). `AcademicService.updateExpiredStatuses()` (RN-13), `NotificationsCron.checkCourseInactivity()` (RN-20) e `checkAnacCommunicationDeadlines()` (RN-22) invocados diretamente via `NestFactory.createApplicationContext(AppModule)` contra Supabase/Upstash reais. Fixtures cobriram os limiares exatos: qualificação vencida há 10 dias, curso inativo há 190 dias (→ deveria suspender) e há 160 dias (→ deveria só alertar), `SemestralReport` com deadline em 45 dias (dentro da janela de 60). Resultado: `{ qualifications: 1, enrollments: 1 }` atualizados por RN-13; os 2 jobs `course-inactive` (um `SUSPENSO`, um `ALERTA_INATIVIDADE`) e o job `anac-communication` foram enfileirados corretamente na fila BullMQ real; os status em banco confirmaram exatamente o esperado. **Nenhum bug encontrado** — a implementação já estava correta.
 
 ## 13. Bugs reais encontrados e corrigidos nesta rodada de validação
@@ -148,13 +153,14 @@ Todos com commit próprio (`git log` tem a mensagem completa e o racional). Resu
 - **`DATABASE_URL`** (pooler, porta 6543) precisa de `?pgbouncer=true`. **`DIRECT_URL`** (porta 5432) não.
 - Prisma bypassa RLS (conecta como owner) — a defesa multi-tenant real está 100% na camada de aplicação (`organization_id` explícito em todo `where`), não na RLS. RLS é defesa em profundidade para acesso direto via REST/anon key, não a linha de defesa principal do backend.
 - `npm run dev:api` / `dev:web` fazem `npm run build:shared` antes (necessário — `@orion/shared` precisa estar compilado em `dist/`).
+- **`service_role` do `supabase-js` não tem GRANT de `INSERT` em `user_profiles`** (`permission denied for table user_profiles`, código `42501`) — a API real nunca bate nesse problema porque o Prisma conecta como owner do banco, não como `service_role`. Mas se você for criar um `user_profile` de teste manualmente (§15, passo 2), **não use `admin.from('user_profiles').insert(...)` do client `service_role`** — insira via `execute_sql` (roda como owner) em vez disso.
 
 ## 15. Metodologia de teste ponta a ponta (replicar em sessões futuras)
 
 Para validar qualquer endpoint/regra de negócio contra a infra real:
 
 1. Criar organização de teste via `mcp__claude_ai_Supabase__execute_sql` (sempre incluir `updated_at` nos inserts manuais — não tem default no banco).
-2. Criar usuário real: `supabase.auth.admin.createUser({ app_metadata: { organization_id, roles: [...] } })` + inserir `user_profiles` com o mesmo `id`.
+2. Criar usuário real: `supabase.auth.admin.createUser({ app_metadata: { organization_id, roles: [...] } })` + inserir `user_profiles` com o mesmo `id` **via `execute_sql`** (o client `service_role` do `supabase-js` não tem GRANT de `INSERT` nessa tabela — ver §14).
 3. Pegar token real: `supabase.auth.signInWithPassword(...)` com o client `anon`.
 4. Subir API/web (`npm run dev:api` / `dev:web`), testar via `curl` com `Authorization: Bearer <token>` ou via Playwright (`chromium.launch`) para o frontend.
 5. **Sempre limpar ao final**: apagar as linhas criadas (ordem inversa das FKs) e `supabase.auth.admin.deleteUser(...)`. Confirmar `select count(*) from organizations` = 0 antes de encerrar.
@@ -162,10 +168,9 @@ Para validar qualquer endpoint/regra de negócio contra a infra real:
 
 ## 16. Próximos passos sugeridos (em ordem de valor)
 
-1. Definir e implementar regras de negócio específicas para SGQ/SGSO (hoje só têm CRUD genérico).
-2. Considerar regras de negócio para clients/crm/contracts/financial (hoje sem RN numeradas).
-3. Configurar Sentry de verdade (hoje é placeholder em `.env`).
-4. Se for para produção: revisar CORS (`app.enableCors()` está aberto sem allowlist) e configurar domínio(s) permitido(s).
+1. Considerar regras de negócio para clients/crm/contracts/financial (hoje sem RN numeradas).
+2. Configurar Sentry de verdade (hoje é placeholder em `.env`).
+3. Se for para produção: revisar CORS (`app.enableCors()` está aberto sem allowlist) e configurar domínio(s) permitido(s).
 
 ### 16.1. Como testar crons/jobs agendados ponta a ponta (sem esperar o schedule)
 
