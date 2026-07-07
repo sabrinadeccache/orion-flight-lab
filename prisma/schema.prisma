@@ -459,22 +459,23 @@ model Curriculum {
 }
 
 model Course {
-  id               String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organization_id  String       @db.Uuid
-  organization     Organization @relation(fields: [organization_id], references: [id])
-  curriculum_id    String       @db.Uuid
-  curriculum       Curriculum   @relation(fields: [curriculum_id], references: [id])
-  name             String
-  code             String
-  status           CourseStatus   @default(ATIVO)
-  modality         CourseModality @default(MISTO)
-  max_students     Int          @default(25)
-  start_date       DateTime?
-  end_date         DateTime?
-  last_activity_at DateTime     @default(now())
-  created_at       DateTime     @default(now())
-  updated_at       DateTime     @updatedAt
-  deleted_at       DateTime?
+  id                String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id   String         @db.Uuid
+  organization      Organization   @relation(fields: [organization_id], references: [id])
+  curriculum_id     String         @db.Uuid
+  curriculum        Curriculum     @relation(fields: [curriculum_id], references: [id])
+  name              String
+  code              String
+  status            CourseStatus   @default(ATIVO)
+  modality          CourseModality @default(MISTO)
+  min_passing_score Decimal?       @db.Decimal(5, 2)
+  max_students      Int            @default(25)
+  start_date        DateTime?
+  end_date          DateTime?
+  last_activity_at  DateTime       @default(now())
+  created_at        DateTime       @default(now())
+  updated_at        DateTime       @updatedAt
+  deleted_at        DateTime?
 
   segments          Segment[]
   enrollments       Enrollment[]
