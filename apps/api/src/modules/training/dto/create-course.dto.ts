@@ -1,4 +1,5 @@
-import { IsDateString, IsInt, IsOptional, IsString, IsUUID, Min } from 'class-validator';
+import { CourseModality } from '@prisma/client';
+import { IsDateString, IsEnum, IsInt, IsOptional, IsString, IsUUID, Min } from 'class-validator';
 
 export class CreateCourseDto {
   @IsUUID()
@@ -9,6 +10,10 @@ export class CreateCourseDto {
 
   @IsString()
   code!: string;
+
+  @IsOptional()
+  @IsEnum(CourseModality)
+  modality?: CourseModality;
 
   @IsOptional()
   @IsInt()

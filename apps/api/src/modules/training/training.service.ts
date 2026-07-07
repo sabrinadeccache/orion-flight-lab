@@ -66,6 +66,7 @@ export class TrainingService {
         curriculum_id: dto.curriculum_id,
         name: dto.name,
         code: dto.code,
+        modality: dto.modality,
         max_students: dto.max_students,
         start_date: dto.start_date ? new Date(dto.start_date) : undefined,
         end_date: dto.end_date ? new Date(dto.end_date) : undefined,
@@ -97,6 +98,7 @@ export class TrainingService {
       data: {
         name: dto.name,
         code: dto.code,
+        modality: dto.modality,
         max_students: dto.max_students,
         start_date: dto.start_date ? new Date(dto.start_date) : undefined,
         end_date: dto.end_date ? new Date(dto.end_date) : undefined,
