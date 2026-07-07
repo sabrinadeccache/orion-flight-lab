@@ -1,4 +1,5 @@
-import { IsOptional, IsString } from 'class-validator';
+import { DocumentApprovalStatus } from '@prisma/client';
+import { IsEnum, IsOptional, IsString } from 'class-validator';
 
 export class CreateDocumentDto {
   @IsString()
@@ -7,4 +8,8 @@ export class CreateDocumentDto {
   @IsOptional()
   @IsString()
   category?: string;
+
+  @IsOptional()
+  @IsEnum(DocumentApprovalStatus)
+  status?: DocumentApprovalStatus;
 }

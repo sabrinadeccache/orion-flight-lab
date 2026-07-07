@@ -29,7 +29,7 @@ export class DocumentsService {
         organization_id: organizationId,
         title: dto.title,
         category: dto.category,
-        status: DocumentApprovalStatus.EM_ELABORACAO,
+        status: dto.status ?? DocumentApprovalStatus.EM_ELABORACAO,
       },
     });
   }
