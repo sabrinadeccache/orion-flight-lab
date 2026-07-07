@@ -1,6 +1,7 @@
-import { StatusBadge } from '../../../components/ui/status-badge';
-import { statusFromExpiry } from '../../../lib/expiry';
-import { apiFetch } from '../../../lib/api';
+import Link from 'next/link';
+import { StatusBadge } from '../../../../components/ui/status-badge';
+import { statusFromExpiry } from '../../../../lib/expiry';
+import { apiFetch } from '../../../../lib/api';
 
 interface InstructorDetail {
   id: string;
@@ -29,7 +30,15 @@ export default async function InstructorDetailPage({
 
   return (
     <main className="mx-auto max-w-4xl p-8">
-      <h1 className="text-2xl font-semibold text-slate-900">{instructor.full_name}</h1>
+      <div className="mb-1 flex items-center justify-between">
+        <h1 className="text-2xl font-semibold text-slate-900">{instructor.full_name}</h1>
+        <Link
+          href={`/personnel/instructors/${params.id}/edit`}
+          className="rounded-md border px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+        >
+          Editar
+        </Link>
+      </div>
       <p className="mb-6 text-sm text-slate-500">
         CPF {instructor.cpf} · Registro ANAC {instructor.anac_registration ?? '—'}
       </p>
