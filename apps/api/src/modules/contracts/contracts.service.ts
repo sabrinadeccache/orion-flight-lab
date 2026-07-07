@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { Contract, ContractAmendment, Plan, Subscription } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CreateContractDto } from './dto/create-contract.dto';
+import { UpdateContractDto } from './dto/update-contract.dto';
 import { CreateContractAmendmentDto } from './dto/create-contract-amendment.dto';
 import { CreatePlanDto } from './dto/create-plan.dto';
 import { CreateSubscriptionDto } from './dto/create-subscription.dto';
@@ -33,6 +34,37 @@ export class ContractsService {
 
   findContracts(organizationId: string): Promise<Contract[]> {
     return this.prisma.contract.findMany({ where: { organization_id: organizationId, deleted_at: null } });
+  }
+
+  async findContract(organizationId: string, id: string): Promise<Contract> {
+    const contract = await this.prisma.contract.findFirst({
+      where: { id, organization_id: organizationId, deleted_at: null },
+    });
+    if (!contract) throw new NotFoundException('Contract not found');
+    return contract;
+  }
+
+  async updateContract(
+    organizationId: string,
+    id: string,
+    dto: UpdateContractDto,
+  ): Promise<Contract> {
+    await this.findContract(organizationId, id);
+    return this.prisma.contract.update({
+      where: { id },
+      data: {
+        contract_number: dto.contract_number,
+        start_date: dto.start_date ? new Date(dto.start_date) : undefined,
+        end_date: dto.end_date ? new Date(dto.end_date) : undefined,
+        status: dto.status,
+        value: dto.value,
+      },
+    });
+  }
+
+  async deleteContract(organizationId: string, id: string): Promise<void> {
+    await this.findContract(organizationId, id);
+    await this.prisma.contract.update({ where: { id }, data: { deleted_at: new Date() } });
   }
 
   async createAmendment(
