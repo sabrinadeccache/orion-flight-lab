@@ -17,15 +17,39 @@ interface Examiner {
   active: boolean;
 }
 
-export default async function PersonnelPage(): Promise<React.ReactElement> {
-  const [instructors, examiners] = await Promise.all([
+export default async function PersonnelPage({
+  searchParams,
+}: {
+  searchParams: { status?: string };
+}): Promise<React.ReactElement> {
+  const [instructorsAll, examinersAll] = await Promise.all([
     apiFetch<Instructor[]>('/personnel/instructors'),
     apiFetch<Examiner[]>('/personnel/examiners'),
   ]);
 
+  const filter = searchParams.status;
+  const applyFilter = <T extends { active: boolean }>(items: T[] | null): T[] | null =>
+    !items || !filter ? items : items.filter((item) => (filter === 'ativo' ? item.active : !item.active));
+
+  const instructors = applyFilter(instructorsAll);
+  const examiners = applyFilter(examinersAll);
+
   return (
     <main className="mx-auto max-w-6xl p-8">
-      <h1 className="mb-6 text-2xl font-semibold text-slate-900">Instrutores e examinadores</h1>
+      <div className="mb-6 flex items-center justify-between">
+        <h1 className="text-2xl font-semibold text-slate-900">Instrutores e examinadores</h1>
+        <div className="flex gap-2 text-sm">
+          <Link href="/personnel" className="rounded-md border px-3 py-1.5">
+            Todos
+          </Link>
+          <Link href="/personnel?status=ativo" className="rounded-md border px-3 py-1.5">
+            Ativos
+          </Link>
+          <Link href="/personnel?status=inativo" className="rounded-md border px-3 py-1.5">
+            Inativos
+          </Link>
+        </div>
+      </div>
 
       <section className="mb-10">
         <div className="mb-4 flex items-center justify-between">
@@ -51,7 +75,7 @@ export default async function PersonnelPage(): Promise<React.ReactElement> {
               {(!instructors || instructors.length === 0) && (
                 <tr>
                   <td colSpan={4} className="px-4 py-6 text-center text-slate-400">
-                    Nenhum instrutor cadastrado.
+                    Nenhum instrutor encontrado.
                   </td>
                 </tr>
               )}
@@ -99,7 +123,7 @@ export default async function PersonnelPage(): Promise<React.ReactElement> {
               {(!examiners || examiners.length === 0) && (
                 <tr>
                   <td colSpan={4} className="px-4 py-6 text-center text-slate-400">
-                    Nenhum examinador cadastrado.
+                    Nenhum examinador encontrado.
                   </td>
                 </tr>
               )}
