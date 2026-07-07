@@ -125,6 +125,8 @@ O projeto **não está mais em estágio de scaffold**. Existe um projeto Supabas
   - **LGPD / residência de dados**: o Sentry SaaS só hospeda em US ou UE — não existe região Brasil, por isso a escolha consciente de região UE acima. Como o sistema lida com CPF, nomes, contatos e dados de ocorrência de segurança, isso seria uma transferência internacional de dado pessoal (art. 33 LGPD) se não fosse tratado. Mitigação implementada: `packages/shared/src/sentry-scrub.ts` exporta `scrubSentryEvent`, usado como `beforeSend` nos 4 pontos de `Sentry.init` (API + web server/edge/client) — remove recursivamente qualquer campo cujo nome contenha `cpf`, `cnpj`, `full_name`, `email`, `phone`, `birth_date`, `anac_record_number`, `address`, `authorization`, `access_token`, `password` (em `request.data`, `request.query_string`, `request.headers`, `extra` e `breadcrumbs`), e `sendDefaultPii: false` explícito. Só metadado técnico (stack trace, rota, status) sai do Brasil. Se novos campos sensíveis forem adicionados ao schema, adicionar o nome em `SENSITIVE_KEYS` nesse arquivo.
 - **CORS**: `apps/api/src/main.ts` usa uma allowlist configurável via `CORS_ALLOWED_ORIGINS` (`.env`, comma-separated), não mais `app.enableCors()` aberto. Sem a env var, cai em `http://localhost:3000` (dev) e loga um warning se `NODE_ENV=production`. Antes de produção: setar `CORS_ALLOWED_ORIGINS` para o domínio real, `https://www.orionflightlab.com.br` (ver §16).
 - **Domínio de produção decidido**: `orionflightlab.com.br` (o `apps/web` vai em `www.orionflightlab.com.br`, o `apps/api` em `api.orionflightlab.com.br` — subdomínios do mesmo domínio registrado, não domínios separados). Ainda não registrado/hospedado — ver §16.
+- **⚠️ Sessão de teste manual ativa (exceção temporária à regra de "banco sempre vazio")**: existe uma organização de demo real no Supabase — `c3000000-0000-0000-0000-000000000003` ("Orion Flight Lab - Demo"), com um usuário real `demo@orionflightlab.com.br` / senha `DemoOrion2026!` (role `ADMIN`), e dados de exemplo (turma PPL, aluno, instrutor, examinador, cliente, contrato, hazard, qualificação a vencer). Isso foi criado a pedido do usuário para ele testar o produto pelo navegador em `localhost:3000`, e **não foi limpo de propósito** — o usuário pode ainda estar testando quando uma nova sessão começar. **Não apague essa organização nem mate os processos `dev:api`/`dev:web` sem perguntar ao usuário primeiro.** Se o usuário confirmar que já terminou de testar, aí sim seguir a limpeza padrão do §15 (apagar linhas + `supabase.auth.admin.deleteUser`) e voltar a `organizations` count = 0.
+  - Se os servidores locais não estiverem rodando quando a sessão começar, é só `npm run dev:api` e `npm run dev:web` de novo — os dados de demo continuam no Supabase entre sessões, só os processos Node é que não persistem.
 
 ## 12. Status de validação por módulo
 
@@ -136,7 +138,7 @@ Testado **ponta a ponta contra a infraestrutura real** (não é só `lint`/`type
 - ✅ **notifications** — BullMQ + Upstash real, cron de produção (`checkQualificationExpiry`) rodado de ponta a ponta.
 - ✅ **auth** — guard JWKS, `/auth/me`, RBAC.
 - ✅ **reports** — `/reports/dashboard-summary` (KPIs reais do dashboard).
-- ✅ **frontend** — login, dashboard, students, personnel, documents, qualifications renderizados de verdade no Chromium headless (Playwright), zero erros de console, middleware de proteção de rota testado.
+- ✅ **frontend** — login, dashboard, students, personnel, documents, qualifications renderizados de verdade no Chromium headless (Playwright), zero erros de console, middleware de proteção de rota testado. Ver §18 para o estado atual e detalhado de cobertura de telas (navegação, CRUD por módulo).
 - ✅ **segurança multi-tenant** — auditoria de IDOR completa (escrita e leitura) em todos os módulos; ver §13.
 - ✅ **sgq / sgso** — RN-25 a RN-28 implementadas e testadas ponta a ponta via HTTP real (API local + token real do Supabase Auth + Postgres real), incluindo os dois casos negativos (bloqueio) e positivos (liberação) de cada regra. Migração real aplicada (`Risk.status`, `SafetyOccurrence.hazard_id`), advisor de segurança limpo depois.
 - ✅ **clients / crm / contracts / financial** — RN-29 a RN-32 implementadas e testadas ponta a ponta via HTTP real (RN-29/30/31) e via invocação direta do cron (RN-32, mesmo método do §16.1). Nenhuma migração de schema necessária (campos já existiam).
@@ -161,6 +163,7 @@ Todos com commit próprio (`git log` tem a mensagem completa e o racional). Resu
 10. **`CrmService.createProposal` exigia uma `Account` mesmo com `account_id` opcional no DTO** — qualquer proposta sem conta vinculada (o caso comum) sempre retornava 404 "Account not found". Corrigido para só validar quando `account_id` é informado.
 11. **CORS estava totalmente aberto** (`app.enableCors()` sem opções, reflete qualquer origem) — trocado por allowlist configurável via `CORS_ALLOWED_ORIGINS` (ver §11).
 12. **`npm run lint`/`npm run typecheck` da raiz quebravam num checkout limpo**: dependiam de `packages/shared/dist` já existir, mas nenhum dos dois scripts compilava `@orion/shared` antes — só funcionava porque `dev:api`/`dev:web` sempre rodam `build:shared` primeiro, mascarando o problema em qualquer sessão que já tivesse rodado um desses. Reproduzido de propósito (apagando `dist/` e rodando `typecheck`) antes de confirmar e corrigir — ambos os scripts agora rodam `build:shared` como primeiro passo. Foi assim que o CI (ver §17) quase nasceu quebrado.
+13. **Frontend era só leitura em quase tudo, e sem navegação nenhuma**: `/` era um placeholder (`<h1>Orion Flight Lab</h1>`) sem link pra nenhuma outra tela, e não existia nenhum componente de menu — cada página só era alcançável digitando a URL direto. Além disso, Students/Personnel/Courses só tinham listagem e detalhe, sem criar/editar/excluir (o backend também não tinha os endpoints correspondentes: `Student`/`Instructor` não tinham `PATCH`/`DELETE`, `Examiner` nem `GET :id` tinha, e o módulo `training` era um stub — só `GET /training/courses`, sem `POST` nem cadeia `TrainingProgram`→`Curriculum`). A lista de "Instrutores e examinadores" também só buscava instrutores (`/personnel/instructors`), examinadores nunca apareciam apesar do título. Tudo corrigido: `SidebarNav` (ver §18), CRUD completo (API + telas) pra Student, Instructor, Examiner, TrainingProgram/Curriculum (create+list) e Course (CRUD completo).
 
 ## 14. Armadilhas conhecidas (não redescobrir)
 
@@ -184,12 +187,12 @@ Para validar qualquer endpoint/regra de negócio contra a infra real:
 
 ## 16. Próximos passos sugeridos (em ordem de valor)
 
-Não há próximos passos técnicos pendentes conhecidos no momento — todas as RNs numeradas (§5), os itens de infraestrutura (Sentry, CORS) e a rede de testes automatizados (§17) estão implementados e testados (§12).
+Todas as RNs numeradas (§5), os itens de infraestrutura (Sentry, CORS) e a rede de testes automatizados (§17) estão implementados e testados (§12). O que resta é principalmente **completar a cobertura de CRUD do frontend** (ver §18) e itens que dependem de decisões/contas externas:
 
-- ✅ **Sentry**: DSNs reais já configurados (`SENTRY_DSN` e `NEXT_PUBLIC_SENTRY_DSN`), ambos os projetos na região UE (`ingest.de.sentry.io`, confirma Alemanha). Scrubbing de PII (ver §11) já está ativo.
-- ✅ **Testes automatizados + CI**: implementados (ver §17). Próxima extensão natural, quando fizer sentido, é um smoke test E2E do `apps/web` (Playwright) no CI — deliberadamente fora de escopo desta rodada (ver §17).
-- ⏳ **Domínio**: decidido — **`www.orionflightlab.com.br`** (raiz `orionflightlab.com.br`). Plano de subdomínio: `www.orionflightlab.com.br` (ou raiz) para `apps/web`, `api.orionflightlab.com.br` para `apps/api`. Ainda **não registrado/configurado em DNS** — quando o registro e a hospedagem estiverem prontos, setar `CORS_ALLOWED_ORIGINS=https://www.orionflightlab.com.br` (e o subdomínio de staging, se houver) antes de ir para produção (ver §11).
-- Definir regras de negócio adicionais conforme o produto evoluir (novos módulos, novos requisitos ANAC) fica como próximo item de valor depois disso.
+1. ⏳ **CRUD de frontend restante** (ver §18 para o mapa completo): Documents, Certificates, Qualifications, Clients, Contracts ainda são só leitura (listagem/detalhe, sem criar/editar/excluir). SGQ, SGSO, CRM (Accounts/Proposals/Pipelines) e Financial não têm tela nenhuma no frontend ainda — só existem via API. Sugestão de ordem: Clients/Contracts (mesmo padrão de Students/Courses, sem hierarquia extra) → Qualifications/Certificates (dependem de Enrollment já existente) → Documents (tem upload de arquivo, mais trabalho) → SGQ/SGSO/CRM/Financial (módulos inteiros sem UI, maior escopo cada um).
+2. Domínio: decidido — **`www.orionflightlab.com.br`** (raiz `orionflightlab.com.br`). Plano de subdomínio: `www.orionflightlab.com.br` (ou raiz) para `apps/web`, `api.orionflightlab.com.br` para `apps/api`. Ainda **não registrado/configurado em DNS** — quando o registro e a hospedagem estiverem prontos, setar `CORS_ALLOWED_ORIGINS=https://www.orionflightlab.com.br` (e o subdomínio de staging, se houver) antes de ir para produção (ver §11).
+3. Smoke test E2E do `apps/web` (Playwright) no CI — deliberadamente fora de escopo até agora (ver §17).
+4. Definir regras de negócio adicionais conforme o produto evoluir (novos módulos, novos requisitos ANAC) fica como próximo item de valor depois disso.
 
 ### 16.1. Como testar crons/jobs agendados ponta a ponta (sem esperar o schedule)
 
@@ -230,3 +233,36 @@ DIRECT_URL=postgresql://user:pass@localhost:5432/postgres \
 ```
 
 Docker não está disponível neste sandbox (§11), então o teste de integração não pôde ser exercitado localmente nesta sessão — foi validado por checagem de tipos isolada (`tsc --noEmit` no arquivo) e a prova real de que funciona é o próprio job `test-integration` passando no GitHub Actions.
+
+## 18. Frontend (`apps/web`) — navegação e cobertura de CRUD por módulo
+
+O frontend deixou de ser um conjunto de telas soltas sem navegação — agora tem menu lateral e CRUD real nas áreas principais do dia a dia (aluno/curso/pessoal). O resto ainda é só leitura ou não tem tela nenhuma; a tabela abaixo é a fonte da verdade de onde cada módulo está.
+
+### Navegação
+
+- `apps/web/src/components/nav/sidebar-nav.tsx` (`SidebarNav`) — menu lateral fixo, renderizado em `apps/web/src/app/layout.tsx` sempre que existe uma sessão (então some sozinho em `/login`). Lê `roles` do `session.user.app_metadata.roles` (vem direto do JWT do Supabase, sem round-trip extra à API) e esconde os links de Clientes/Contratos/Relatórios pra quem não tem o role, espelhando exatamente as mesmas restrições que o `middleware.ts` já aplicava — então não é só cosmético, é redundante de propósito com a proteção real de rota.
+- `/` (raiz) redireciona direto pra `/dashboard` (`apps/web/src/app/page.tsx`, `redirect('/dashboard')`) — antes era um placeholder sem função.
+
+### Cobertura de CRUD por módulo
+
+| Módulo | Listagem/Detalhe | Criar | Editar | Excluir | Observação |
+|---|---|---|---|---|---|
+| **Students** (`/students`) | ✅ | ✅ `/students/new` | ✅ `/students/[id]/edit` | ✅ (soft-delete, mesmo botão do edit) | — |
+| **Personnel — Instructors** (`/personnel`) | ✅ `/personnel/instructors/[id]` | ✅ `/personnel/instructors/new` | ✅ `/personnel/instructors/[id]/edit` | ✅ | — |
+| **Personnel — Examiners** (`/personnel`) | ✅ `/personnel/examiners/[id]` | ✅ `/personnel/examiners/new` | ✅ `/personnel/examiners/[id]/edit` | ✅ | Antes nem aparecia na listagem (§13.13) |
+| **Courses** (`/courses`) | ✅ | ✅ `/courses/new` | ✅ `/courses/[id]/edit` | ✅ | Exige um Currículo existente — se não houver, o form manda pra `/courses/setup` |
+| **TrainingProgram / Curriculum** (`/courses/setup`) | ✅ (lista simples) | ✅ (form simples) | ❌ | ❌ | Minimalista de propósito — só o suficiente pra desbloquear criar Curso (ver §16 item 1 se precisar de mais) |
+| **Enrollments / Exams** | — | ✅ `/enrollments/new`, `/exams/new` | ❌ | ❌ | Já existiam antes desta rodada; RN-11/RN-07 são exercitadas de verdade nesses forms |
+| **Documents** (`/documents`) | ✅ | ❌ | ❌ | ❌ | Só leitura — API já tem versionamento completo (§12), falta UI |
+| **Certificates** (`/certificates`) | ✅ | ❌ | ❌ | ❌ | Emissão só via `issueCertificate` (RN-05), sem tela própria ainda |
+| **Qualifications** (`/qualifications`) | ✅ | ❌ | ❌ | ❌ | — |
+| **Clients** (`/clients`) | ✅ | ❌ | ❌ | ❌ | — |
+| **Contracts** (`/contracts`) | ✅ | ❌ | ❌ | ❌ | — |
+| **SGQ, SGSO, CRM (Accounts/Proposals/Pipelines), Financial** | ❌ | ❌ | ❌ | ❌ | Sem tela nenhuma — só existem via API (RN-25 a RN-32, testadas via `curl`, ver §12) |
+
+### Convenções das telas novas (seguir esse padrão ao adicionar mais)
+
+- Toda tela de criação/edição é `'use client'`, com `fetch` direto pro `NEXT_PUBLIC_API_URL` (não usa `apiFetch` de `lib/api.ts`, que é só server-side) — mesmo padrão de `enrollments/new` e `exams/new`, que já existiam antes.
+- Erro de validação: lê `body.errors[0].message` da resposta `{ data, meta, errors }` e mostra num `<p className="text-sm text-red-600">`.
+- Exclusão sempre usa `confirm('Excluir ...? Essa ação não pode ser desfeita.')` antes de disparar o `DELETE` — não existe modal de confirmação customizado no projeto ainda, é o `confirm()` nativo do browser mesmo.
+- Toda entidade "filha" que depende de uma "pai" que ainda não existe (ex.: Course sem Curriculum) mostra um aviso inline com link pra onde criar a dependência, em vez de deixar o formulário quebrar ou esconder o botão sem explicação.
