@@ -139,6 +139,7 @@ Testado **ponta a ponta contra a infraestrutura real** (não é só `lint`/`type
 - ✅ **auth** — guard JWKS, `/auth/me`, RBAC.
 - ✅ **reports** — `/reports/dashboard-summary` (KPIs reais do dashboard).
 - ✅ **frontend** — login, dashboard, students, personnel, documents, qualifications renderizados de verdade no Chromium headless (Playwright), zero erros de console, middleware de proteção de rota testado. Ver §18 para o estado atual e detalhado de cobertura de telas (navegação, CRUD por módulo).
+- ✅ **Clients/Contracts CRUD** — `PATCH`/`DELETE` (Client) e `GET :id`/`PATCH`/`DELETE` (Contract, que não tinha nem `GET :id`) adicionados no backend; telas `new`/`[id]/edit` adicionadas no frontend seguindo o mesmo padrão de Students/Courses. Validado ponta a ponta via HTTP real (token real do usuário demo, API local, Postgres real): create → patch → get confirma a mudança → tentativa de IDOR (criar Contract com `client_id` inexistente/de outra org) rejeitada com 404 → delete → get pós-delete confirma 404. Dados de teste criados e removidos ao final (soft-delete), sem afetar a organização de demo (§11).
 - ✅ **segurança multi-tenant** — auditoria de IDOR completa (escrita e leitura) em todos os módulos; ver §13.
 - ✅ **sgq / sgso** — RN-25 a RN-28 implementadas e testadas ponta a ponta via HTTP real (API local + token real do Supabase Auth + Postgres real), incluindo os dois casos negativos (bloqueio) e positivos (liberação) de cada regra. Migração real aplicada (`Risk.status`, `SafetyOccurrence.hazard_id`), advisor de segurança limpo depois.
 - ✅ **clients / crm / contracts / financial** — RN-29 a RN-32 implementadas e testadas ponta a ponta via HTTP real (RN-29/30/31) e via invocação direta do cron (RN-32, mesmo método do §16.1). Nenhuma migração de schema necessária (campos já existiam).
@@ -189,7 +190,7 @@ Para validar qualquer endpoint/regra de negócio contra a infra real:
 
 Todas as RNs numeradas (§5), os itens de infraestrutura (Sentry, CORS) e a rede de testes automatizados (§17) estão implementados e testados (§12). O que resta é principalmente **completar a cobertura de CRUD do frontend** (ver §18) e itens que dependem de decisões/contas externas:
 
-1. ⏳ **CRUD de frontend restante** (ver §18 para o mapa completo): Documents, Certificates, Qualifications, Clients, Contracts ainda são só leitura (listagem/detalhe, sem criar/editar/excluir). SGQ, SGSO, CRM (Accounts/Proposals/Pipelines) e Financial não têm tela nenhuma no frontend ainda — só existem via API. Sugestão de ordem: Clients/Contracts (mesmo padrão de Students/Courses, sem hierarquia extra) → Qualifications/Certificates (dependem de Enrollment já existente) → Documents (tem upload de arquivo, mais trabalho) → SGQ/SGSO/CRM/Financial (módulos inteiros sem UI, maior escopo cada um).
+1. ⏳ **CRUD de frontend restante** (ver §18 para o mapa completo): Documents, Certificates, Qualifications ainda são só leitura (listagem/detalhe, sem criar/editar/excluir). SGQ, SGSO, CRM (Accounts/Proposals/Pipelines) e Financial não têm tela nenhuma no frontend ainda — só existem via API. **Clients/Contracts já têm CRUD completo** (ver §18). Sugestão de ordem: Qualifications/Certificates (dependem de Enrollment já existente) → Documents (tem upload de arquivo, mais trabalho) → SGQ/SGSO/CRM/Financial (módulos inteiros sem UI, maior escopo cada um).
 2. Domínio: decidido — **`www.orionflightlab.com.br`** (raiz `orionflightlab.com.br`). Plano de subdomínio: `www.orionflightlab.com.br` (ou raiz) para `apps/web`, `api.orionflightlab.com.br` para `apps/api`. Ainda **não registrado/configurado em DNS** — quando o registro e a hospedagem estiverem prontos, setar `CORS_ALLOWED_ORIGINS=https://www.orionflightlab.com.br` (e o subdomínio de staging, se houver) antes de ir para produção (ver §11).
 3. Smoke test E2E do `apps/web` (Playwright) no CI — deliberadamente fora de escopo até agora (ver §17).
 4. Definir regras de negócio adicionais conforme o produto evoluir (novos módulos, novos requisitos ANAC) fica como próximo item de valor depois disso.
@@ -256,8 +257,8 @@ O frontend deixou de ser um conjunto de telas soltas sem navegação — agora t
 | **Documents** (`/documents`) | ✅ | ❌ | ❌ | ❌ | Só leitura — API já tem versionamento completo (§12), falta UI |
 | **Certificates** (`/certificates`) | ✅ | ❌ | ❌ | ❌ | Emissão só via `issueCertificate` (RN-05), sem tela própria ainda |
 | **Qualifications** (`/qualifications`) | ✅ | ❌ | ❌ | ❌ | — |
-| **Clients** (`/clients`) | ✅ | ❌ | ❌ | ❌ | — |
-| **Contracts** (`/contracts`) | ✅ | ❌ | ❌ | ❌ | — |
+| **Clients** (`/clients`) | ✅ | ✅ `/clients/new` | ✅ `/clients/[id]/edit` | ✅ | — |
+| **Contracts** (`/contracts`) | ✅ | ✅ `/contracts/new` | ✅ `/contracts/[id]/edit` | ✅ | Exige um Cliente existente — se não houver, o form manda pra `/clients/new` |
 | **SGQ, SGSO, CRM (Accounts/Proposals/Pipelines), Financial** | ❌ | ❌ | ❌ | ❌ | Sem tela nenhuma — só existem via API (RN-25 a RN-32, testadas via `curl`, ver §12) |
 
 ### Convenções das telas novas (seguir esse padrão ao adicionar mais)
