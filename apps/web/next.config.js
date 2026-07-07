@@ -2,7 +2,12 @@ const { withSentryConfig } = require('@sentry/nextjs');
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: true,
+  // Disabled: StrictMode's deliberate dev-only mount->unmount->remount cycle
+  // resets component state between the two passes, so every screen that
+  // fetches on mount (nearly all create/edit screens) visibly flickers
+  // (loading -> content -> loading -> content) in `next dev`. Doesn't affect
+  // production, which never double-invokes regardless of this flag.
+  reactStrictMode: false,
   // Linting is centralized at the monorepo root (npm run lint), which knows
   // how to resolve the workspace-relative ESLint `project` paths. Next's own
   // build-time lint step runs with apps/web as cwd and cannot resolve those
