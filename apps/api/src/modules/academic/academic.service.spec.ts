@@ -23,7 +23,7 @@ describe('AcademicService', () => {
     theoryExam: { create: jest.Mock };
     practicalExam: { create: jest.Mock };
     certificate: { create: jest.Mock };
-    qualification: { updateMany: jest.Mock };
+    qualification: { updateMany: jest.Mock; create: jest.Mock };
   };
   let storage: { upload: jest.Mock };
 
@@ -41,7 +41,7 @@ describe('AcademicService', () => {
       theoryExam: { create: jest.fn() },
       practicalExam: { create: jest.fn() },
       certificate: { create: jest.fn() },
-      qualification: { updateMany: jest.fn() },
+      qualification: { updateMany: jest.fn(), create: jest.fn() },
     };
     storage = { upload: jest.fn() };
 
@@ -138,13 +138,15 @@ describe('AcademicService', () => {
     });
   });
 
-  describe('RN-05: certificate requires attendance + approved theory + approved practical', () => {
+  describe('RN-05: certificate requires attendance + the exams the course modality demands', () => {
     const certDto = { enrollment_id: 'enrollment-1' };
 
-    it('blocks issuance when the practical exam is missing', async () => {
+    it('blocks issuance when the practical exam is missing on a MISTO course', async () => {
       prisma.enrollment.findFirst.mockResolvedValue({
         id: 'enrollment-1',
         student_id: 'student-1',
+        course_id: 'course-1',
+        course: { code: 'PPL-101', modality: 'MISTO' },
         theoryExams: [{ result: 'APROVADO' }],
         practicalExams: [],
         attendances: [{ id: 'attendance-1' }],
@@ -158,6 +160,8 @@ describe('AcademicService', () => {
       prisma.enrollment.findFirst.mockResolvedValue({
         id: 'enrollment-1',
         student_id: 'student-1',
+        course_id: 'course-1',
+        course: { code: 'PPL-101', modality: 'MISTO' },
         theoryExams: [{ result: 'APROVADO' }],
         practicalExams: [{ result: 'APROVADO' }],
         attendances: [],
@@ -166,10 +170,12 @@ describe('AcademicService', () => {
       await expect(service.issueCertificate(ORG_ID, certDto)).rejects.toThrow(BadRequestException);
     });
 
-    it('issues the certificate once every requirement is met', async () => {
+    it('issues the certificate for a MISTO course once both exams are approved, without creating a qualification', async () => {
       prisma.enrollment.findFirst.mockResolvedValue({
         id: 'enrollment-1',
         student_id: 'student-1',
+        course_id: 'course-1',
+        course: { code: 'PPL-101', modality: 'MISTO' },
         theoryExams: [{ result: 'APROVADO' }],
         practicalExams: [{ result: 'APROVADO' }],
         attendances: [{ id: 'attendance-1' }],
@@ -179,6 +185,7 @@ describe('AcademicService', () => {
         id: 'certificate-1',
         certificate_number: 'CERT-org-1-123',
         file_url: 'certificates/org-1/CERT-123.pdf',
+        issued_at: new Date('2026-01-01'),
       });
       prisma.enrollment.update.mockResolvedValue({});
 
@@ -191,6 +198,126 @@ describe('AcademicService', () => {
           data: expect.objectContaining({ status: EnrollmentStatus.CONCLUIDA }),
         }),
       );
+      expect(prisma.qualification.create).not.toHaveBeenCalled();
+    });
+
+    it('issues the certificate for a TEORICO course from theory alone, and auto-creates the Qualification', async () => {
+      prisma.enrollment.findFirst.mockResolvedValue({
+        id: 'enrollment-1',
+        student_id: 'student-1',
+        course_id: 'course-1',
+        course: { code: 'CTA-TEO', modality: 'TEORICO' },
+        theoryExams: [{ result: 'APROVADO' }],
+        practicalExams: [],
+        attendances: [{ id: 'attendance-1' }],
+      });
+      storage.upload.mockResolvedValue('certificates/org-1/CERT-124.pdf');
+      prisma.certificate.create.mockResolvedValue({
+        id: 'certificate-2',
+        certificate_number: 'CERT-org-1-124',
+        file_url: 'certificates/org-1/CERT-124.pdf',
+        issued_at: new Date('2026-01-02'),
+      });
+      prisma.enrollment.update.mockResolvedValue({});
+      prisma.qualification.create.mockResolvedValue({ id: 'qualification-1' });
+
+      const result = await service.issueCertificate(ORG_ID, certDto);
+
+      expect(result.id).toBe('certificate-2');
+      expect(prisma.qualification.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            organization_id: ORG_ID,
+            student_id: 'student-1',
+            course_id: 'course-1',
+            certificate_id: 'certificate-2',
+            qualification_code: 'CTA-TEO',
+          }),
+        }),
+      );
+    });
+
+    it('issues the certificate for a PRATICO course from the practical exam alone', async () => {
+      prisma.enrollment.findFirst.mockResolvedValue({
+        id: 'enrollment-1',
+        student_id: 'student-1',
+        course_id: 'course-1',
+        course: { code: 'CTA-PRA', modality: 'PRATICO' },
+        theoryExams: [],
+        practicalExams: [{ result: 'APROVADO' }],
+        attendances: [{ id: 'attendance-1' }],
+      });
+      storage.upload.mockResolvedValue('certificates/org-1/CERT-125.pdf');
+      prisma.certificate.create.mockResolvedValue({
+        id: 'certificate-3',
+        certificate_number: 'CERT-org-1-125',
+        file_url: 'certificates/org-1/CERT-125.pdf',
+        issued_at: new Date('2026-01-03'),
+      });
+      prisma.enrollment.update.mockResolvedValue({});
+
+      const result = await service.issueCertificate(ORG_ID, certDto);
+
+      expect(result.id).toBe('certificate-3');
+      expect(prisma.qualification.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('createQualification: manual entry for PRATICO courses', () => {
+    const qualDto = {
+      student_id: 'student-1',
+      course_id: 'course-1',
+      qualification_code: 'CTA-PRA',
+      issued_at: '2026-01-01',
+    };
+
+    it('throws NotFoundException when the student does not belong to the organization', async () => {
+      prisma.student.findFirst.mockResolvedValue(null);
+
+      await expect(service.createQualification(ORG_ID, qualDto)).rejects.toThrow(NotFoundException);
+      expect(prisma.qualification.create).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException when the course does not belong to the organization (IDOR)', async () => {
+      prisma.student.findFirst.mockResolvedValue({ id: 'student-1' });
+      prisma.course.findFirst.mockResolvedValue(null);
+
+      await expect(service.createQualification(ORG_ID, qualDto)).rejects.toThrow(NotFoundException);
+      expect(prisma.qualification.create).not.toHaveBeenCalled();
+    });
+
+    it('creates the qualification once student (and course, if given) are validated', async () => {
+      prisma.student.findFirst.mockResolvedValue({ id: 'student-1' });
+      prisma.course.findFirst.mockResolvedValue({ id: 'course-1' });
+      prisma.qualification.create.mockResolvedValue({ id: 'qualification-2' });
+
+      const result = await service.createQualification(ORG_ID, qualDto);
+
+      expect(result).toEqual({ id: 'qualification-2' });
+      expect(prisma.qualification.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            organization_id: ORG_ID,
+            student_id: 'student-1',
+            course_id: 'course-1',
+            qualification_code: 'CTA-PRA',
+          }),
+        }),
+      );
+    });
+
+    it('creates the qualification without a course_id (no course to validate)', async () => {
+      prisma.student.findFirst.mockResolvedValue({ id: 'student-1' });
+      prisma.qualification.create.mockResolvedValue({ id: 'qualification-3' });
+
+      const result = await service.createQualification(ORG_ID, {
+        student_id: 'student-1',
+        qualification_code: 'CTA-EXTERNA',
+        issued_at: '2026-01-01',
+      });
+
+      expect(result).toEqual({ id: 'qualification-3' });
+      expect(prisma.course.findFirst).not.toHaveBeenCalled();
     });
   });
 

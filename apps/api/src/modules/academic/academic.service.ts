@@ -2,10 +2,12 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import {
   Attendance,
   Certificate,
+  CourseModality,
   Enrollment,
   EnrollmentStatus,
   ExamResult,
   ExpiryStatus,
+  Qualification,
   Student,
 } from '@prisma/client';
 import { ExamType } from '@orion/shared';
@@ -17,6 +19,7 @@ import { CreateEnrollmentDto } from './dto/create-enrollment.dto';
 import { CreateExamDto } from './dto/create-exam.dto';
 import { CreateCertificateDto } from './dto/create-certificate.dto';
 import { CreateAttendanceDto } from './dto/create-attendance.dto';
+import { CreateQualificationDto } from './dto/create-qualification.dto';
 
 /** RN-11: a class/course may never have more than 25 active enrollments. */
 const MAX_STUDENTS_PER_COURSE = 25;
@@ -196,8 +199,16 @@ export class AcademicService {
 
   /**
    * RN-05: a certificate can only be issued once every requirement of the
-   * enrollment's course is complete (attendance recorded, and both theory
-   * and practical exams present with an APROVADO result).
+   * enrollment's course is complete (attendance recorded, plus the exam
+   * type(s) the course's modality requires, all APROVADO):
+   * TEORICO needs an approved theory exam, PRATICO needs an approved
+   * practical exam, MISTO (default) needs both — same as before this
+   * field existed, so pre-existing courses keep their old behavior.
+   *
+   * When the course is TEORICO, issuing the certificate also auto-creates
+   * the student's Qualification (qualification_code = course.code). PRATICO
+   * has no automatic path — see createQualification for the manual entry
+   * point used for those.
    */
   async issueCertificate(
     organizationId: string,
@@ -205,7 +216,7 @@ export class AcademicService {
   ): Promise<{ id: string; certificate_number: string; file_url: string }> {
     const enrollment = await this.prisma.enrollment.findFirst({
       where: { id: dto.enrollment_id, organization_id: organizationId, deleted_at: null },
-      include: { theoryExams: true, practicalExams: true, attendances: true },
+      include: { theoryExams: true, practicalExams: true, attendances: true, course: true },
     });
     if (!enrollment) {
       throw new NotFoundException('Enrollment not found');
@@ -215,7 +226,15 @@ export class AcademicService {
     const hasApprovedPractical = enrollment.practicalExams.some((e) => e.result === 'APROVADO');
     const hasAttendance = enrollment.attendances.length > 0;
 
-    if (!hasApprovedTheory || !hasApprovedPractical || !hasAttendance) {
+    const modality = enrollment.course.modality;
+    const hasRequiredExams =
+      modality === CourseModality.TEORICO
+        ? hasApprovedTheory
+        : modality === CourseModality.PRATICO
+          ? hasApprovedPractical
+          : hasApprovedTheory && hasApprovedPractical;
+
+    if (!hasRequiredExams || !hasAttendance) {
       throw new BadRequestException(
         'Cannot issue certificate: course requirements are incomplete (RN-05)',
       );
@@ -246,11 +265,59 @@ export class AcademicService {
       data: { status: EnrollmentStatus.CONCLUIDA, completed_at: new Date() },
     });
 
+    if (modality === CourseModality.TEORICO) {
+      await this.prisma.qualification.create({
+        data: {
+          organization_id: organizationId,
+          student_id: enrollment.student_id,
+          course_id: enrollment.course_id,
+          certificate_id: certificate.id,
+          qualification_code: enrollment.course.code,
+          issued_at: certificate.issued_at,
+        },
+      });
+    }
+
     return {
       id: certificate.id,
       certificate_number: certificate.certificate_number,
       file_url: fileUrl,
     };
+  }
+
+  /** Manual qualification entry — used for PRATICO courses (no auto-issuance path). */
+  async createQualification(
+    organizationId: string,
+    dto: CreateQualificationDto,
+  ): Promise<Qualification> {
+    const student = await this.prisma.student.findFirst({
+      where: { id: dto.student_id, organization_id: organizationId, deleted_at: null },
+      select: { id: true },
+    });
+    if (!student) {
+      throw new NotFoundException('Student not found');
+    }
+
+    if (dto.course_id) {
+      const course = await this.prisma.course.findFirst({
+        where: { id: dto.course_id, organization_id: organizationId, deleted_at: null },
+        select: { id: true },
+      });
+      if (!course) {
+        throw new NotFoundException('Course not found');
+      }
+    }
+
+    return this.prisma.qualification.create({
+      data: {
+        organization_id: organizationId,
+        student_id: dto.student_id,
+        course_id: dto.course_id,
+        qualification_code: dto.qualification_code,
+        issued_at: new Date(dto.issued_at),
+        expires_at: dto.expires_at ? new Date(dto.expires_at) : undefined,
+      },
+    });
   }
 
   findCertificates(organizationId: string): Promise<Certificate[]> {
