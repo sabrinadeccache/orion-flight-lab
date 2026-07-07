@@ -3,6 +3,7 @@ import { Document, DocumentApprovalStatus, DocumentVersion } from '@prisma/clien
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { StorageService } from '../../common/storage/storage.service';
 import { CreateDocumentDto } from './dto/create-document.dto';
+import { UpdateDocumentDto } from './dto/update-document.dto';
 import { CreateDocumentVersionDto } from './dto/create-document-version.dto';
 
 export interface VersionDiffEntry {
@@ -37,6 +38,37 @@ export class DocumentsService {
     return this.prisma.document.findMany({
       where: { organization_id: organizationId, deleted_at: null },
     });
+  }
+
+  async findOne(organizationId: string, id: string): Promise<Document> {
+    const document = await this.prisma.document.findFirst({
+      where: { id, organization_id: organizationId, deleted_at: null },
+    });
+    if (!document) {
+      throw new NotFoundException('Document not found');
+    }
+    return document;
+  }
+
+  async updateDocument(
+    organizationId: string,
+    id: string,
+    dto: UpdateDocumentDto,
+  ): Promise<Document> {
+    await this.findOne(organizationId, id);
+    return this.prisma.document.update({
+      where: { id },
+      data: {
+        title: dto.title,
+        category: dto.category,
+        status: dto.status,
+      },
+    });
+  }
+
+  async deleteDocument(organizationId: string, id: string): Promise<void> {
+    await this.findOne(organizationId, id);
+    await this.prisma.document.update({ where: { id }, data: { deleted_at: new Date() } });
   }
 
   /** Every upload creates a new DocumentVersion; history is never overwritten. */

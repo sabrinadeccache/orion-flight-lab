@@ -1,8 +1,10 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
+  Patch,
   Post,
   UploadedFile,
   UseGuards,
@@ -16,6 +18,7 @@ import { AuditLog } from '../auth/decorators/audit-log.decorator';
 import { AuthenticatedUser } from '../auth/types/authenticated-user';
 import { DocumentsService } from './documents.service';
 import { CreateDocumentDto } from './dto/create-document.dto';
+import { UpdateDocumentDto } from './dto/update-document.dto';
 import { CreateDocumentVersionDto } from './dto/create-document-version.dto';
 
 @Controller('documents')
@@ -32,6 +35,27 @@ export class DocumentsController {
   @Get()
   findAll(@CurrentUser() user: AuthenticatedUser) {
     return this.documentsService.findAll(user.organizationId);
+  }
+
+  @Get(':id')
+  findOne(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.documentsService.findOne(user.organizationId, id);
+  }
+
+  @Patch(':id')
+  @AuditLog({ action: 'update', entity: 'Document' })
+  update(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateDocumentDto,
+  ) {
+    return this.documentsService.updateDocument(user.organizationId, id, dto);
+  }
+
+  @Delete(':id')
+  @AuditLog({ action: 'delete', entity: 'Document' })
+  remove(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string): Promise<void> {
+    return this.documentsService.deleteDocument(user.organizationId, id);
   }
 
   @Get(':id/versions')
