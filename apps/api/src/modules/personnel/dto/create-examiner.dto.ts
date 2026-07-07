@@ -1,4 +1,4 @@
-import { IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsOptional, IsString } from 'class-validator';
 
 export class CreateExaminerDto {
   @IsString()
@@ -10,4 +10,8 @@ export class CreateExaminerDto {
   @IsOptional()
   @IsString()
   anac_accreditation?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  active?: boolean;
 }

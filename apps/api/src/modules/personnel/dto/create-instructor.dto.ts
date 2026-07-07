@@ -1,4 +1,4 @@
-import { IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsOptional, IsString } from 'class-validator';
 
 export class CreateInstructorDto {
   @IsString()
@@ -10,4 +10,8 @@ export class CreateInstructorDto {
   @IsOptional()
   @IsString()
   anac_registration?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  active?: boolean;
 }

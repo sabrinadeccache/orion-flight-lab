@@ -1,4 +1,4 @@
-import { IsEnum, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsEnum, IsOptional, IsString } from 'class-validator';
 import { ClientType } from '@prisma/client';
 
 export class CreateClientDto {
@@ -12,4 +12,8 @@ export class CreateClientDto {
   @IsOptional()
   @IsEnum(ClientType)
   type?: ClientType;
+
+  @IsOptional()
+  @IsBoolean()
+  active?: boolean;
 }

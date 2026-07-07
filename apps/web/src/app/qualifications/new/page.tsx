@@ -19,6 +19,9 @@ export default async function NewQualificationPage(): Promise<React.ReactElement
 
   return (
     <main className="mx-auto max-w-lg p-8">
+      <Link href="/qualifications" className="mb-4 inline-block text-sm text-slate-600 hover:underline">
+        ← Voltar para Qualificações
+      </Link>
       <h1 className="mb-6 text-2xl font-semibold text-slate-900">Nova qualificação</h1>
 
       {students.length === 0 ? (

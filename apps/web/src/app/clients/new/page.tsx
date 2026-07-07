@@ -13,6 +13,7 @@ export default function NewClientPage(): React.ReactElement {
   const [name, setName] = useState('');
   const [cnpjCpf, setCnpjCpf] = useState('');
   const [type, setType] = useState('PJ');
+  const [active, setActive] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -31,6 +32,7 @@ export default function NewClientPage(): React.ReactElement {
         name,
         cnpj_cpf: cnpjCpf || undefined,
         type,
+        active,
       }),
     });
 
@@ -83,6 +85,14 @@ export default function NewClientPage(): React.ReactElement {
             <option value="PF">Pessoa Física</option>
           </select>
         </div>
+        <label className="flex items-center gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={active}
+            onChange={(event) => setActive(event.target.checked)}
+          />
+          Cliente ativo
+        </label>
         {error && <p className="text-sm text-red-600">{error}</p>}
         <button
           type="submit"

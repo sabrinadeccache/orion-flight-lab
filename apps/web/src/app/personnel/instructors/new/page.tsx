@@ -13,6 +13,7 @@ export default function NewInstructorPage(): React.ReactElement {
   const [fullName, setFullName] = useState('');
   const [cpf, setCpf] = useState('');
   const [anacRegistration, setAnacRegistration] = useState('');
+  const [active, setActive] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -31,6 +32,7 @@ export default function NewInstructorPage(): React.ReactElement {
         full_name: fullName,
         cpf,
         anac_registration: anacRegistration || undefined,
+        active,
       }),
     });
 
@@ -81,6 +83,14 @@ export default function NewInstructorPage(): React.ReactElement {
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
           />
         </div>
+        <label className="flex items-center gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={active}
+            onChange={(event) => setActive(event.target.checked)}
+          />
+          Instrutor ativo
+        </label>
         {error && <p className="text-sm text-red-600">{error}</p>}
         <button
           type="submit"
