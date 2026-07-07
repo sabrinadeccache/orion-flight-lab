@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { apiFetch } from '../../lib/api';
 
 interface Client {
@@ -13,7 +14,15 @@ export default async function ClientsPage(): Promise<React.ReactElement> {
 
   return (
     <main className="mx-auto max-w-6xl p-8">
-      <h1 className="mb-6 text-2xl font-semibold text-slate-900">Clientes</h1>
+      <div className="mb-6 flex items-center justify-between">
+        <h1 className="text-2xl font-semibold text-slate-900">Clientes</h1>
+        <Link
+          href="/clients/new"
+          className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white"
+        >
+          + Novo cliente
+        </Link>
+      </div>
       <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
         <table className="min-w-full divide-y divide-slate-200 text-sm">
           <thead>
@@ -22,12 +31,13 @@ export default async function ClientsPage(): Promise<React.ReactElement> {
               <th className="px-4 py-2">CNPJ/CPF</th>
               <th className="px-4 py-2">Tipo</th>
               <th className="px-4 py-2">Status</th>
+              <th className="px-4 py-2"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {clients.length === 0 && (
               <tr>
-                <td colSpan={4} className="px-4 py-6 text-center text-slate-400">
+                <td colSpan={5} className="px-4 py-6 text-center text-slate-400">
                   Nenhum cliente cadastrado.
                 </td>
               </tr>
@@ -38,6 +48,11 @@ export default async function ClientsPage(): Promise<React.ReactElement> {
                 <td className="px-4 py-2">{client.cnpj_cpf ?? '—'}</td>
                 <td className="px-4 py-2">{client.type}</td>
                 <td className="px-4 py-2">{client.active ? 'Ativo' : 'Inativo'}</td>
+                <td className="px-4 py-2 text-right">
+                  <Link href={`/clients/${client.id}/edit`} className="text-slate-600 hover:underline">
+                    Editar
+                  </Link>
+                </td>
               </tr>
             ))}
           </tbody>
