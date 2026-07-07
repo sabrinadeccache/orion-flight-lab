@@ -1,6 +1,7 @@
 'use client';
 
 import { FormEvent, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useSupabase } from '../../../components/providers/supabase-provider';
 
@@ -13,6 +14,7 @@ export default function NewStudentPage(): React.ReactElement {
   const [cpf, setCpf] = useState('');
   const [anacRecordNumber, setAnacRecordNumber] = useState('');
   const [birthDate, setBirthDate] = useState('');
+  const [active, setActive] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -32,6 +34,7 @@ export default function NewStudentPage(): React.ReactElement {
         cpf,
         anac_record_number: anacRecordNumber || undefined,
         birth_date: birthDate || undefined,
+        active,
       }),
     });
 
@@ -49,6 +52,9 @@ export default function NewStudentPage(): React.ReactElement {
 
   return (
     <main className="mx-auto max-w-lg p-8">
+      <Link href="/students" className="mb-4 inline-block text-sm text-slate-600 hover:underline">
+        ← Voltar para Alunos
+      </Link>
       <h1 className="mb-6 text-2xl font-semibold text-slate-900">Novo aluno</h1>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
@@ -90,6 +96,14 @@ export default function NewStudentPage(): React.ReactElement {
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
           />
         </div>
+        <label className="flex items-center gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={active}
+            onChange={(event) => setActive(event.target.checked)}
+          />
+          Aluno ativo
+        </label>
         {error && <p className="text-sm text-red-600">{error}</p>}
         <button
           type="submit"

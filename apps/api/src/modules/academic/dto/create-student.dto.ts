@@ -1,4 +1,4 @@
-import { IsDateString, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsDateString, IsOptional, IsString } from 'class-validator';
 
 /// Seção 142.71 — abertura de ficha ANAC do aluno.
 export class CreateStudentDto {
@@ -15,4 +15,8 @@ export class CreateStudentDto {
   @IsOptional()
   @IsDateString()
   birth_date?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  active?: boolean;
 }

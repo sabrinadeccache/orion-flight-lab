@@ -39,6 +39,7 @@ export class AcademicService {
         cpf: dto.cpf,
         anac_record_number: dto.anac_record_number,
         birth_date: dto.birth_date ? new Date(dto.birth_date) : undefined,
+        active: dto.active,
       },
     });
   }
