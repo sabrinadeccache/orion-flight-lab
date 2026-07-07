@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { StatusBadge } from '../../components/ui/status-badge';
 import { statusFromExpiry } from '../../lib/expiry';
 import { apiFetch } from '../../lib/api';
@@ -20,7 +21,15 @@ export default async function QualificationsPage(): Promise<React.ReactElement> 
 
   return (
     <main className="mx-auto max-w-6xl p-8">
-      <h1 className="mb-6 text-2xl font-semibold text-slate-900">Mapa de qualificações</h1>
+      <div className="mb-6 flex items-center justify-between">
+        <h1 className="text-2xl font-semibold text-slate-900">Mapa de qualificações</h1>
+        <Link
+          href="/qualifications/new"
+          className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white"
+        >
+          + Nova qualificação
+        </Link>
+      </div>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         {(Object.keys(groups) as (keyof typeof groups)[]).map((status) => (
           <div key={status} className="rounded-lg border border-slate-200 bg-white p-4">

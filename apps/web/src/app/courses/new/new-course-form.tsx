@@ -18,6 +18,7 @@ export function NewCourseForm({ curricula }: { curricula: CurriculumOption[] }):
   const [curriculumId, setCurriculumId] = useState('');
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
+  const [modality, setModality] = useState('MISTO');
   const [maxStudents, setMaxStudents] = useState('25');
   const [startDate, setStartDate] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -38,6 +39,7 @@ export function NewCourseForm({ curricula }: { curricula: CurriculumOption[] }):
         curriculum_id: curriculumId,
         name,
         code,
+        modality,
         max_students: maxStudents ? Number(maxStudents) : undefined,
         start_date: startDate || undefined,
       }),
@@ -90,6 +92,18 @@ export function NewCourseForm({ curricula }: { curricula: CurriculumOption[] }):
           onChange={(event) => setCode(event.target.value)}
           className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
         />
+      </div>
+      <div>
+        <label className="mb-1 block text-sm font-medium text-slate-700">Modalidade</label>
+        <select
+          value={modality}
+          onChange={(event) => setModality(event.target.value)}
+          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+        >
+          <option value="TEORICO">Teórico (certificado emite qualificação automaticamente)</option>
+          <option value="PRATICO">Prático (qualificação inserida manualmente)</option>
+          <option value="MISTO">Misto (exige teoria e prática, sem qualificação automática)</option>
+        </select>
       </div>
       <div>
         <label className="mb-1 block text-sm font-medium text-slate-700">

@@ -10,6 +10,7 @@ interface Course {
   id: string;
   name: string;
   code: string;
+  modality: string;
   status: string;
   max_students: number;
 }
@@ -20,6 +21,7 @@ export default function EditCoursePage({ params }: { params: { id: string } }): 
   const [course, setCourse] = useState<Course | null>(null);
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
+  const [modality, setModality] = useState('MISTO');
   const [maxStudents, setMaxStudents] = useState('25');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -35,6 +37,7 @@ export default function EditCoursePage({ params }: { params: { id: string } }): 
         setCourse(body.data);
         setName(body.data.name);
         setCode(body.data.code);
+        setModality(body.data.modality);
         setMaxStudents(String(body.data.max_students));
       });
   }, [session, params.id]);
@@ -50,7 +53,12 @@ export default function EditCoursePage({ params }: { params: { id: string } }): 
         'Content-Type': 'application/json',
         ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}),
       },
-      body: JSON.stringify({ name, code, max_students: maxStudents ? Number(maxStudents) : undefined }),
+      body: JSON.stringify({
+        name,
+        code,
+        modality,
+        max_students: maxStudents ? Number(maxStudents) : undefined,
+      }),
     });
 
     setLoading(false);
@@ -114,6 +122,18 @@ export default function EditCoursePage({ params }: { params: { id: string } }): 
             onChange={(event) => setCode(event.target.value)}
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
           />
+        </div>
+        <div>
+          <label className="mb-1 block text-sm font-medium text-slate-700">Modalidade</label>
+          <select
+            value={modality}
+            onChange={(event) => setModality(event.target.value)}
+            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+          >
+            <option value="TEORICO">Teórico (certificado emite qualificação automaticamente)</option>
+            <option value="PRATICO">Prático (qualificação inserida manualmente)</option>
+            <option value="MISTO">Misto (exige teoria e prática, sem qualificação automática)</option>
+          </select>
         </div>
         <div>
           <label className="mb-1 block text-sm font-medium text-slate-700">
