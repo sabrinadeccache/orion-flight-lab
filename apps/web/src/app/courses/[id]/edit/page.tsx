@@ -12,6 +12,7 @@ interface Course {
   name: string;
   code: string;
   modality: string;
+  min_passing_score: string | null;
   status: string;
   max_students: number;
 }
@@ -23,6 +24,7 @@ export default function EditCoursePage({ params }: { params: { id: string } }): 
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
   const [modality, setModality] = useState('MISTO');
+  const [minPassingScore, setMinPassingScore] = useState('');
   const [maxStudents, setMaxStudents] = useState('25');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -39,6 +41,7 @@ export default function EditCoursePage({ params }: { params: { id: string } }): 
         setName(body.data.name);
         setCode(body.data.code);
         setModality(body.data.modality);
+        setMinPassingScore(body.data.min_passing_score ?? '');
         setMaxStudents(String(body.data.max_students));
       });
   }, [session, params.id]);
@@ -58,6 +61,7 @@ export default function EditCoursePage({ params }: { params: { id: string } }): 
         name,
         code,
         modality,
+        min_passing_score: minPassingScore ? Number(minPassingScore) : undefined,
         max_students: maxStudents ? Number(maxStudents) : undefined,
       }),
     });
@@ -138,6 +142,24 @@ export default function EditCoursePage({ params }: { params: { id: string } }): 
             <option value="PRATICO">Prático (qualificação inserida manualmente)</option>
             <option value="MISTO">Misto (exige teoria e prática, sem qualificação automática)</option>
           </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-sm font-medium text-slate-700">
+            Aproveitamento mínimo (opcional, 0-100)
+          </label>
+          <input
+            type="number"
+            min={0}
+            max={100}
+            step="0.01"
+            value={minPassingScore}
+            onChange={(event) => setMinPassingScore(event.target.value)}
+            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+          />
+          <p className="mt-1 text-xs text-slate-500">
+            Se definido, um exame com nota igual ou maior é aprovado automaticamente — e, ao
+            completar os requisitos do curso (RN-05), o certificado é emitido sem ação manual.
+          </p>
         </div>
         <div>
           <label className="mb-1 block text-sm font-medium text-slate-700">

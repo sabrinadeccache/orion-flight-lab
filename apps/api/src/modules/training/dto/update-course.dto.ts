@@ -1,5 +1,14 @@
 import { CourseModality } from '@prisma/client';
-import { IsDateString, IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import {
+  IsDateString,
+  IsEnum,
+  IsInt,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+} from 'class-validator';
 
 export class UpdateCourseDto {
   @IsOptional()
@@ -13,6 +22,12 @@ export class UpdateCourseDto {
   @IsOptional()
   @IsEnum(CourseModality)
   modality?: CourseModality;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  min_passing_score?: number;
 
   @IsOptional()
   @IsInt()

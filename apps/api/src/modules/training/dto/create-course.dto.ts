@@ -1,5 +1,15 @@
 import { CourseModality } from '@prisma/client';
-import { IsDateString, IsEnum, IsInt, IsOptional, IsString, IsUUID, Min } from 'class-validator';
+import {
+  IsDateString,
+  IsEnum,
+  IsInt,
+  IsNumber,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  Min,
+} from 'class-validator';
 
 export class CreateCourseDto {
   @IsUUID()
@@ -14,6 +24,15 @@ export class CreateCourseDto {
   @IsOptional()
   @IsEnum(CourseModality)
   modality?: CourseModality;
+
+  /// RN-05: minimum score (0-100) an exam needs to be auto-approved and
+  /// trigger automatic certificate issuance. Null/omitted keeps the old
+  /// behavior (only the exam's explicit `result` field matters).
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  min_passing_score?: number;
 
   @IsOptional()
   @IsInt()
