@@ -96,6 +96,13 @@ export default function EditDocumentPage({
     setDownloading(true);
     setFileError(null);
 
+    // Open the tab synchronously, inside the click handler, so the browser
+    // still attributes it to the user gesture — setting its location after
+    // the signed URL comes back from an `await` (as this used to do) makes
+    // popup blockers treat it as an unsolicited popup and silently block it,
+    // which is why the download felt stuck/intermittent.
+    const downloadWindow = window.open('', '_blank', 'noopener,noreferrer');
+
     const response = await fetch(`${API_URL}/documents/${params.id}/download`, {
       headers: session ? { Authorization: `Bearer ${session.access_token}` } : {},
     });
@@ -103,17 +110,25 @@ export default function EditDocumentPage({
     setDownloading(false);
 
     if (!response.ok) {
+      downloadWindow?.close();
       setFileError('Não foi possível gerar o link de download.');
       return;
     }
 
     const body: { data: { url: string } | null } = await response.json();
     if (!body.data) {
+      downloadWindow?.close();
       setFileError('Nenhum arquivo enviado ainda para este documento.');
       return;
     }
 
-    window.open(body.data.url, '_blank', 'noopener,noreferrer');
+    if (downloadWindow) {
+      downloadWindow.location.href = body.data.url;
+    } else {
+      // Popup blocked even for the synchronous open (e.g. browser setting) —
+      // fall back to a same-tab navigation, which is never blocked.
+      window.location.href = body.data.url;
+    }
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
