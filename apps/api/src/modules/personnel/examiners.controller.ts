@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { SupabaseAuthGuard } from '../auth/guards/supabase-auth.guard';
 import { OrganizationGuard } from '../auth/guards/organization.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -6,6 +6,7 @@ import { AuditLog } from '../auth/decorators/audit-log.decorator';
 import { AuthenticatedUser } from '../auth/types/authenticated-user';
 import { PersonnelService } from './personnel.service';
 import { CreateExaminerDto } from './dto/create-examiner.dto';
+import { UpdateExaminerDto } from './dto/update-examiner.dto';
 import { CreateQualificationDto } from './dto/create-qualification.dto';
 
 @Controller('personnel/examiners')
@@ -22,6 +23,27 @@ export class ExaminersController {
   @Get()
   findAll(@CurrentUser() user: AuthenticatedUser) {
     return this.personnelService.findExaminers(user.organizationId);
+  }
+
+  @Get(':id')
+  findOne(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.personnelService.findExaminer(user.organizationId, id);
+  }
+
+  @Patch(':id')
+  @AuditLog({ action: 'update', entity: 'Examiner' })
+  update(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateExaminerDto,
+  ) {
+    return this.personnelService.updateExaminer(user.organizationId, id, dto);
+  }
+
+  @Delete(':id')
+  @AuditLog({ action: 'delete', entity: 'Examiner' })
+  remove(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.personnelService.deleteExaminer(user.organizationId, id);
   }
 
   @Post(':id/qualifications')

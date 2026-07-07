@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { SupabaseAuthGuard } from '../auth/guards/supabase-auth.guard';
 import { OrganizationGuard } from '../auth/guards/organization.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -6,6 +6,7 @@ import { AuditLog } from '../auth/decorators/audit-log.decorator';
 import { AuthenticatedUser } from '../auth/types/authenticated-user';
 import { PersonnelService } from './personnel.service';
 import { CreateInstructorDto } from './dto/create-instructor.dto';
+import { UpdateInstructorDto } from './dto/update-instructor.dto';
 import { CreateQualificationDto } from './dto/create-qualification.dto';
 import { CreateCmaDto } from './dto/create-cma.dto';
 import { CreateProficiencyDto } from './dto/create-proficiency.dto';
@@ -36,6 +37,22 @@ export class InstructorsController {
   @Get(':id')
   findOne(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.personnelService.findInstructor(user.organizationId, id);
+  }
+
+  @Patch(':id')
+  @AuditLog({ action: 'update', entity: 'Instructor' })
+  update(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateInstructorDto,
+  ) {
+    return this.personnelService.updateInstructor(user.organizationId, id, dto);
+  }
+
+  @Delete(':id')
+  @AuditLog({ action: 'delete', entity: 'Instructor' })
+  remove(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.personnelService.deleteInstructor(user.organizationId, id);
   }
 
   @Post(':id/qualifications')

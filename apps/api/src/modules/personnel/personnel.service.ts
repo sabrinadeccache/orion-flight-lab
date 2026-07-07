@@ -10,7 +10,9 @@ import {
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { StorageService } from '../../common/storage/storage.service';
 import { CreateInstructorDto } from './dto/create-instructor.dto';
+import { UpdateInstructorDto } from './dto/update-instructor.dto';
 import { CreateExaminerDto } from './dto/create-examiner.dto';
+import { UpdateExaminerDto } from './dto/update-examiner.dto';
 import { CreateQualificationDto } from './dto/create-qualification.dto';
 import { CreateCmaDto } from './dto/create-cma.dto';
 import { CreateProficiencyDto } from './dto/create-proficiency.dto';
@@ -53,6 +55,20 @@ export class PersonnelService {
     });
     if (!instructor) throw new NotFoundException('Instructor not found');
     return instructor;
+  }
+
+  async updateInstructor(
+    organizationId: string,
+    id: string,
+    dto: UpdateInstructorDto,
+  ): Promise<Instructor> {
+    await this.findInstructor(organizationId, id);
+    return this.prisma.instructor.update({ where: { id }, data: dto });
+  }
+
+  async deleteInstructor(organizationId: string, id: string): Promise<void> {
+    await this.findInstructor(organizationId, id);
+    await this.prisma.instructor.update({ where: { id }, data: { deleted_at: new Date() } });
   }
 
   /** RN-17: an instructor may hold at most 2 aircraft type qualifications. */
@@ -228,6 +244,29 @@ export class PersonnelService {
     return this.prisma.examiner.findMany({
       where: { organization_id: organizationId, deleted_at: null },
     });
+  }
+
+  async findExaminer(organizationId: string, id: string) {
+    const examiner = await this.prisma.examiner.findFirst({
+      where: { id, organization_id: organizationId, deleted_at: null },
+      include: { qualifications: true },
+    });
+    if (!examiner) throw new NotFoundException('Examiner not found');
+    return examiner;
+  }
+
+  async updateExaminer(
+    organizationId: string,
+    id: string,
+    dto: UpdateExaminerDto,
+  ): Promise<Examiner> {
+    await this.findExaminer(organizationId, id);
+    return this.prisma.examiner.update({ where: { id }, data: dto });
+  }
+
+  async deleteExaminer(organizationId: string, id: string): Promise<void> {
+    await this.findExaminer(organizationId, id);
+    await this.prisma.examiner.update({ where: { id }, data: { deleted_at: new Date() } });
   }
 
   /** RN-18: an examiner may hold at most 2 aircraft type accreditations. */
