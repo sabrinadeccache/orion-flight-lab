@@ -14,6 +14,10 @@ interface DocumentRecord {
   status: string;
 }
 
+interface DocumentVersion {
+  version_number: number;
+}
+
 export default function EditDocumentPage({
   params,
 }: {
@@ -28,6 +32,24 @@ export default function EditDocumentPage({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const [latestVersion, setLatestVersion] = useState<number | null>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+
+  function loadVersions(): void {
+    if (!session) return;
+    fetch(`${API_URL}/documents/${params.id}/versions`, {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((body: { data: DocumentVersion[] } | null) => {
+        const versions = body?.data ?? [];
+        setLatestVersion(versions.length > 0 ? versions[versions.length - 1].version_number : null);
+      });
+  }
+
   useEffect(() => {
     if (!session) return;
     fetch(`${API_URL}/documents/${params.id}`, {
@@ -41,7 +63,58 @@ export default function EditDocumentPage({
         setCategory(body.data.category ?? '');
         setStatus(body.data.status);
       });
+    loadVersions();
   }, [session, params.id]);
+
+  async function handleUpload(): Promise<void> {
+    if (!file) return;
+    setUploading(true);
+    setFileError(null);
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch(`${API_URL}/documents/${params.id}/versions`, {
+      method: 'POST',
+      headers: session ? { Authorization: `Bearer ${session.access_token}` } : {},
+      body: formData,
+    });
+
+    setUploading(false);
+
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      setFileError(body?.errors?.[0]?.message ?? 'Não foi possível enviar o arquivo.');
+      return;
+    }
+
+    setFile(null);
+    loadVersions();
+  }
+
+  async function handleDownload(): Promise<void> {
+    setDownloading(true);
+    setFileError(null);
+
+    const response = await fetch(`${API_URL}/documents/${params.id}/download`, {
+      headers: session ? { Authorization: `Bearer ${session.access_token}` } : {},
+    });
+
+    setDownloading(false);
+
+    if (!response.ok) {
+      setFileError('Não foi possível gerar o link de download.');
+      return;
+    }
+
+    const body: { data: { url: string } | null } = await response.json();
+    if (!body.data) {
+      setFileError('Nenhum arquivo enviado ainda para este documento.');
+      return;
+    }
+
+    window.open(body.data.url, '_blank', 'noopener,noreferrer');
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -160,6 +233,39 @@ export default function EditDocumentPage({
           </button>
         </div>
       </form>
+
+      <div className="mt-8 rounded-lg border border-slate-200 bg-white p-4">
+        <h2 className="mb-1 text-sm font-medium text-slate-900">Arquivo</h2>
+        <p className="mb-3 text-xs text-slate-500">
+          {latestVersion !== null
+            ? `Versão atual: v${latestVersion}`
+            : 'Nenhum arquivo enviado ainda.'}
+        </p>
+        <div className="mb-3 flex items-center gap-3">
+          <input
+            type="file"
+            onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+            className="text-sm text-slate-700"
+          />
+          <button
+            type="button"
+            onClick={handleUpload}
+            disabled={!file || uploading}
+            className="rounded-md border px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          >
+            {uploading ? 'Enviando...' : 'Enviar nova versão'}
+          </button>
+        </div>
+        <button
+          type="button"
+          onClick={handleDownload}
+          disabled={downloading}
+          className="rounded-md border px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+        >
+          {downloading ? 'Gerando link...' : 'Baixar documento'}
+        </button>
+        {fileError && <p className="mt-2 text-sm text-red-600">{fileError}</p>}
+      </div>
     </main>
   );
 }

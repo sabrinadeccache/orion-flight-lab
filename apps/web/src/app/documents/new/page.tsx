@@ -40,7 +40,8 @@ export default function NewDocumentPage(): React.ReactElement {
       return;
     }
 
-    router.push('/documents');
+    const body: { data: { id: string } } = await response.json();
+    router.push(`/documents/${body.data.id}/edit`);
     router.refresh();
   }
 

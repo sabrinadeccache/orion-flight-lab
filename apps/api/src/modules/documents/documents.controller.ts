@@ -58,6 +58,11 @@ export class DocumentsController {
     return this.documentsService.deleteDocument(user.organizationId, id);
   }
 
+  @Get(':id/download')
+  getDownloadUrl(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.documentsService.getDownloadUrl(user.organizationId, id);
+  }
+
   @Get(':id/versions')
   getVersions(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.documentsService.getVersions(user.organizationId, id);

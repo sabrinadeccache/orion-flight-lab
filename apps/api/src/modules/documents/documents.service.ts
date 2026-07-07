@@ -120,6 +120,34 @@ export class DocumentsService {
     return version;
   }
 
+  /** GET /documents/:id/download — signed URL for the latest version's file. */
+  async getDownloadUrl(
+    organizationId: string,
+    documentId: string,
+  ): Promise<{ url: string; version_number: number } | null> {
+    const document = await this.prisma.document.findFirst({
+      where: { id: documentId, organization_id: organizationId, deleted_at: null },
+    });
+    if (!document) {
+      throw new NotFoundException('Document not found');
+    }
+
+    const lastVersion = await this.prisma.documentVersion.findFirst({
+      where: { document_id: documentId, deleted_at: null },
+      orderBy: { version_number: 'desc' },
+    });
+    if (!lastVersion) {
+      return null;
+    }
+
+    const url = await this.storage.createSignedUrl('regulatory-docs', lastVersion.file_url);
+    if (!url) {
+      return null;
+    }
+
+    return { url, version_number: lastVersion.version_number };
+  }
+
   /** GET /documents/:id/versions — full version history with a metadata diff. */
   async getVersions(organizationId: string, documentId: string): Promise<VersionWithDiff[]> {
     const document = await this.prisma.document.findFirst({

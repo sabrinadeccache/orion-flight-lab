@@ -49,4 +49,30 @@ export class StorageService {
 
     return path;
   }
+
+  /**
+   * Buckets are private, so a stored path (e.g. `Document.file_url`) can't be
+   * linked to directly — callers need a time-limited signed URL to download
+   * it. Returns null when no Supabase project is configured (local/dev
+   * scaffold), same convention as upload().
+   */
+  async createSignedUrl(
+    bucket: StorageBucket,
+    path: string,
+    expiresInSeconds = 3600,
+  ): Promise<string | null> {
+    if (!this.client) {
+      return null;
+    }
+
+    const { data, error } = await this.client.storage
+      .from(bucket)
+      .createSignedUrl(path, expiresInSeconds);
+
+    if (error) {
+      throw error;
+    }
+
+    return data.signedUrl;
+  }
 }
