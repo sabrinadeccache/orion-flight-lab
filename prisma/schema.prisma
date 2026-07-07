@@ -62,6 +62,14 @@ enum CourseStatus {
   ENCERRADO
 }
 
+/// RN-05: gates which exam types issueCertificate requires, and whether
+/// certificate issuance auto-creates a Qualification (TEORICO only).
+enum CourseModality {
+  TEORICO
+  PRATICO
+  MISTO
+}
+
 enum ExamType {
   TEORICO
   PRATICO
@@ -458,7 +466,8 @@ model Course {
   curriculum       Curriculum   @relation(fields: [curriculum_id], references: [id])
   name             String
   code             String
-  status           CourseStatus @default(ATIVO)
+  status           CourseStatus   @default(ATIVO)
+  modality         CourseModality @default(MISTO)
   max_students     Int          @default(25)
   start_date       DateTime?
   end_date         DateTime?
@@ -761,12 +770,17 @@ model Certificate {
   updated_at         DateTime     @updatedAt
   deleted_at         DateTime?
 
+  qualifications Qualification[]
+
   @@index([organization_id])
   @@index([enrollment_id])
   @@index([student_id])
   @@map("certificates")
 }
 
+/// Student rating/qualification. Auto-created by issueCertificate (RN-05) when
+/// the course's modality is TEORICO; PRATICO courses require manual entry
+/// (no automatic theory->rating pipeline for those) via createQualification.
 model Qualification {
   id                 String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organization_id    String       @db.Uuid
@@ -774,6 +788,8 @@ model Qualification {
   student_id         String       @db.Uuid
   student            Student      @relation(fields: [student_id], references: [id])
   course_id          String?      @db.Uuid
+  certificate_id     String?      @db.Uuid
+  certificate        Certificate? @relation(fields: [certificate_id], references: [id])
   qualification_code String
   issued_at          DateTime
   expires_at         DateTime?
@@ -786,6 +802,7 @@ model Qualification {
 
   @@index([organization_id])
   @@index([student_id])
+  @@index([certificate_id])
   @@map("qualifications")
 }
 
