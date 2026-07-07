@@ -2,13 +2,16 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import {
   Attendance,
   Certificate,
+  Course,
   CourseModality,
   Enrollment,
   EnrollmentStatus,
   ExamResult,
   ExpiryStatus,
+  PracticalExam,
   Qualification,
   Student,
+  TheoryExam,
 } from '@prisma/client';
 import { ExamType } from '@orion/shared';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -23,6 +26,13 @@ import { CreateQualificationDto } from './dto/create-qualification.dto';
 
 /** RN-11: a class/course may never have more than 25 active enrollments. */
 const MAX_STUDENTS_PER_COURSE = 25;
+
+type EnrollmentWithCertificateRequirements = Enrollment & {
+  theoryExams: TheoryExam[];
+  practicalExams: PracticalExam[];
+  attendances: Attendance[];
+  course: Course;
+};
 
 @Injectable()
 export class AcademicService {
@@ -131,6 +141,10 @@ export class AcademicService {
   /**
    * Seção 142.71a6 — registers a theory or practical exam.
    * RN-07: blocked while the student is inside a 12-month fraud quarantine.
+   * RN-05: when the course sets a min_passing_score and the caller didn't
+   * pass an explicit result, the score decides APROVADO/REPROVADO — and if
+   * that completes the course's requirements, the certificate (and, for
+   * TEORICO, the Qualification) is issued automatically.
    */
   async registerExam(
     organizationId: string,
@@ -138,7 +152,7 @@ export class AcademicService {
   ): Promise<{ id: string; type: ExamType }> {
     const enrollment = await this.prisma.enrollment.findFirst({
       where: { id: dto.enrollment_id, organization_id: organizationId, deleted_at: null },
-      include: { student: true },
+      include: { student: true, course: true },
     });
     if (!enrollment) {
       throw new NotFoundException('Enrollment not found');
@@ -158,17 +172,42 @@ export class AcademicService {
       examiner_id: dto.examiner_id,
       exam_date: new Date(dto.exam_date),
       score: dto.score,
-      result: dto.result ?? ExamResult.PENDENTE,
+      result: this.deriveExamResult(dto, enrollment.course),
       attempt_number: dto.attempt_number ?? 1,
     };
 
+    let result: { id: string; type: ExamType };
     if (dto.type === ExamType.TEORICO) {
       const exam = await this.prisma.theoryExam.create({ data: baseData });
-      return { id: exam.id, type: ExamType.TEORICO };
+      result = { id: exam.id, type: ExamType.TEORICO };
+    } else {
+      const exam = await this.prisma.practicalExam.create({ data: baseData });
+      result = { id: exam.id, type: ExamType.PRATICO };
     }
 
-    const exam = await this.prisma.practicalExam.create({ data: baseData });
-    return { id: exam.id, type: ExamType.PRATICO };
+    await this.tryAutoIssueCertificate(organizationId, dto.enrollment_id);
+    return result;
+  }
+
+  /**
+   * RN-05: an exam's `result` is explicit if the caller passed one; otherwise,
+   * a `score` is compared against the course's `min_passing_score` (when
+   * set) to auto-derive APROVADO/REPROVADO. No score or no course minimum
+   * configured falls back to PENDENTE, same as before this field existed.
+   */
+  private deriveExamResult(
+    dto: Pick<CreateExamDto, 'result' | 'score'>,
+    course: Pick<Course, 'min_passing_score'>,
+  ): ExamResult {
+    if (dto.result !== undefined) {
+      return dto.result;
+    }
+    if (dto.score !== undefined && course.min_passing_score !== null) {
+      return Number(dto.score) >= Number(course.min_passing_score)
+        ? ExamResult.APROVADO
+        : ExamResult.REPROVADO;
+    }
+    return ExamResult.PENDENTE;
   }
 
   /** Seção 142.71 — attendance record, read by RN-05 to gate certificate issuance. */
@@ -187,7 +226,7 @@ export class AcademicService {
       throw new NotFoundException('Lesson not found');
     }
 
-    return this.prisma.attendance.create({
+    const attendance = await this.prisma.attendance.create({
       data: {
         organization_id: organizationId,
         enrollment_id: dto.enrollment_id,
@@ -196,15 +235,26 @@ export class AcademicService {
         present: dto.present ?? true,
       },
     });
+
+    await this.tryAutoIssueCertificate(organizationId, dto.enrollment_id);
+    return attendance;
   }
 
   /**
    * RN-05: a certificate can only be issued once every requirement of the
    * enrollment's course is complete (attendance recorded, plus the exam
-   * type(s) the course's modality requires, all APROVADO):
-   * TEORICO needs an approved theory exam, PRATICO needs an approved
-   * practical exam, MISTO (default) needs both — same as before this
-   * field existed, so pre-existing courses keep their old behavior.
+   * type(s) the course's modality requires, all APROVADO — which, when the
+   * course sets a min_passing_score, already reflects the student having
+   * met that minimum, since registerExam derives APROVADO/REPROVADO from
+   * score vs. min_passing_score): TEORICO needs an approved theory exam,
+   * PRATICO needs an approved practical exam, MISTO (default) needs both —
+   * same as before this field existed, so pre-existing courses keep their
+   * old behavior.
+   *
+   * This is also called automatically (see tryAutoIssueCertificate) right
+   * after the exam/attendance that completes the course is registered —
+   * this manual entry point stays for retroactive issuance or courses that
+   * don't rely on min_passing_score-driven auto-approval.
    *
    * When the course is TEORICO, issuing the certificate also auto-creates
    * the student's Qualification (qualification_code = course.code). PRATICO
@@ -223,6 +273,45 @@ export class AcademicService {
       throw new NotFoundException('Enrollment not found');
     }
 
+    const existing = await this.prisma.certificate.findFirst({
+      where: { enrollment_id: enrollment.id, organization_id: organizationId, deleted_at: null },
+      select: { id: true },
+    });
+    if (existing) {
+      throw new BadRequestException('A certificate has already been issued for this enrollment');
+    }
+
+    if (!this.meetsCertificateRequirements(enrollment)) {
+      throw new BadRequestException(
+        'Cannot issue certificate: course requirements are incomplete (RN-05)',
+      );
+    }
+
+    return this.issueCertificateForEnrollment(organizationId, enrollment);
+  }
+
+  /**
+   * Fires after registerExam/registerAttendance; silently does nothing if
+   * the enrollment isn't fully qualified yet or already has a certificate
+   * (both are expected, non-error states for a still-in-progress course).
+   */
+  private async tryAutoIssueCertificate(organizationId: string, enrollmentId: string): Promise<void> {
+    const existing = await this.prisma.certificate.findFirst({
+      where: { enrollment_id: enrollmentId, organization_id: organizationId, deleted_at: null },
+      select: { id: true },
+    });
+    if (existing) return;
+
+    const enrollment = await this.prisma.enrollment.findFirst({
+      where: { id: enrollmentId, organization_id: organizationId, deleted_at: null },
+      include: { theoryExams: true, practicalExams: true, attendances: true, course: true },
+    });
+    if (!enrollment || !this.meetsCertificateRequirements(enrollment)) return;
+
+    await this.issueCertificateForEnrollment(organizationId, enrollment);
+  }
+
+  private meetsCertificateRequirements(enrollment: EnrollmentWithCertificateRequirements): boolean {
     const hasApprovedTheory = enrollment.theoryExams.some((e) => e.result === 'APROVADO');
     const hasApprovedPractical = enrollment.practicalExams.some((e) => e.result === 'APROVADO');
     const hasAttendance = enrollment.attendances.length > 0;
@@ -235,12 +324,13 @@ export class AcademicService {
           ? hasApprovedPractical
           : hasApprovedTheory && hasApprovedPractical;
 
-    if (!hasRequiredExams || !hasAttendance) {
-      throw new BadRequestException(
-        'Cannot issue certificate: course requirements are incomplete (RN-05)',
-      );
-    }
+    return hasRequiredExams && hasAttendance;
+  }
 
+  private async issueCertificateForEnrollment(
+    organizationId: string,
+    enrollment: EnrollmentWithCertificateRequirements,
+  ): Promise<{ id: string; certificate_number: string; file_url: string }> {
     const certificateNumber = `CERT-${organizationId.slice(0, 8)}-${Date.now()}`;
     const fileName = `${certificateNumber}.pdf`;
     const fileUrl = await this.storage.upload(
@@ -266,7 +356,7 @@ export class AcademicService {
       data: { status: EnrollmentStatus.CONCLUIDA, completed_at: new Date() },
     });
 
-    if (modality === CourseModality.TEORICO) {
+    if (enrollment.course.modality === CourseModality.TEORICO) {
       await this.prisma.qualification.create({
         data: {
           organization_id: organizationId,

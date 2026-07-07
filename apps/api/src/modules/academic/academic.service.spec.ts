@@ -22,7 +22,9 @@ describe('AcademicService', () => {
     };
     theoryExam: { create: jest.Mock };
     practicalExam: { create: jest.Mock };
-    certificate: { create: jest.Mock };
+    lesson: { findFirst: jest.Mock };
+    attendance: { create: jest.Mock };
+    certificate: { create: jest.Mock; findFirst: jest.Mock };
     qualification: { updateMany: jest.Mock; create: jest.Mock };
   };
   let storage: { upload: jest.Mock };
@@ -40,10 +42,13 @@ describe('AcademicService', () => {
       },
       theoryExam: { create: jest.fn() },
       practicalExam: { create: jest.fn() },
-      certificate: { create: jest.fn() },
+      lesson: { findFirst: jest.fn() },
+      attendance: { create: jest.fn() },
+      certificate: { create: jest.fn(), findFirst: jest.fn() },
       qualification: { updateMany: jest.fn(), create: jest.fn() },
     };
     storage = { upload: jest.fn() };
+    prisma.certificate.findFirst.mockResolvedValue(null);
 
     const module = await Test.createTestingModule({
       providers: [
@@ -94,11 +99,19 @@ describe('AcademicService', () => {
       exam_date: '2026-01-01',
     };
 
+    const baseEnrollment = {
+      id: 'enrollment-1',
+      theoryExams: [],
+      practicalExams: [],
+      attendances: [],
+      course: { min_passing_score: null, modality: 'MISTO', code: 'X' },
+    };
+
     it('blocks registering an exam while the student is quarantined', async () => {
       const future = new Date();
       future.setFullYear(future.getFullYear() + 1);
       prisma.enrollment.findFirst.mockResolvedValue({
-        id: 'enrollment-1',
+        ...baseEnrollment,
         student: { fraud_quarantine_until: future },
       });
 
@@ -109,7 +122,7 @@ describe('AcademicService', () => {
     it('allows registering an exam once the quarantine has expired', async () => {
       const past = new Date('2020-01-01');
       prisma.enrollment.findFirst.mockResolvedValue({
-        id: 'enrollment-1',
+        ...baseEnrollment,
         student: { fraud_quarantine_until: past },
       });
       prisma.theoryExam.create.mockResolvedValue({ id: 'exam-1' });
@@ -121,7 +134,7 @@ describe('AcademicService', () => {
 
     it('allows registering an exam when the student was never quarantined', async () => {
       prisma.enrollment.findFirst.mockResolvedValue({
-        id: 'enrollment-1',
+        ...baseEnrollment,
         student: { fraud_quarantine_until: null },
       });
       prisma.theoryExam.create.mockResolvedValue({ id: 'exam-2' });
@@ -260,6 +273,212 @@ describe('AcademicService', () => {
 
       expect(result.id).toBe('certificate-3');
       expect(prisma.qualification.create).not.toHaveBeenCalled();
+    });
+
+    it('blocks re-issuing a certificate for an enrollment that already has one', async () => {
+      prisma.enrollment.findFirst.mockResolvedValue({
+        id: 'enrollment-1',
+        student_id: 'student-1',
+        course_id: 'course-1',
+        course: { code: 'PPL-101', modality: 'MISTO' },
+        theoryExams: [{ result: 'APROVADO' }],
+        practicalExams: [{ result: 'APROVADO' }],
+        attendances: [{ id: 'attendance-1' }],
+      });
+      prisma.certificate.findFirst.mockResolvedValue({ id: 'existing-certificate' });
+
+      await expect(service.issueCertificate(ORG_ID, certDto)).rejects.toThrow(BadRequestException);
+      expect(storage.upload).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('RN-05: min_passing_score derives the exam result when none is given explicitly', () => {
+    const scoredExamDto = {
+      type: ExamType.TEORICO,
+      enrollment_id: 'enrollment-1',
+      exam_date: '2026-01-01',
+    };
+
+    it('derives APROVADO when the score meets the course minimum', async () => {
+      prisma.enrollment.findFirst.mockResolvedValue({
+        id: 'enrollment-1',
+        student: { fraud_quarantine_until: null },
+        theoryExams: [],
+        practicalExams: [],
+        attendances: [],
+        course: { min_passing_score: '70.00', modality: 'MISTO', code: 'X' },
+      });
+      prisma.theoryExam.create.mockResolvedValue({ id: 'exam-1' });
+
+      await service.registerExam(ORG_ID, { ...scoredExamDto, score: 75 });
+
+      expect(prisma.theoryExam.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ result: 'APROVADO' }) }),
+      );
+    });
+
+    it('derives REPROVADO when the score is below the course minimum', async () => {
+      prisma.enrollment.findFirst.mockResolvedValue({
+        id: 'enrollment-1',
+        student: { fraud_quarantine_until: null },
+        theoryExams: [],
+        practicalExams: [],
+        attendances: [],
+        course: { min_passing_score: '70.00', modality: 'MISTO', code: 'X' },
+      });
+      prisma.theoryExam.create.mockResolvedValue({ id: 'exam-2' });
+
+      await service.registerExam(ORG_ID, { ...scoredExamDto, score: 40 });
+
+      expect(prisma.theoryExam.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ result: 'REPROVADO' }) }),
+      );
+    });
+
+    it('respects an explicit result even when a score and course minimum are both present', async () => {
+      prisma.enrollment.findFirst.mockResolvedValue({
+        id: 'enrollment-1',
+        student: { fraud_quarantine_until: null },
+        theoryExams: [],
+        practicalExams: [],
+        attendances: [],
+        course: { min_passing_score: '70.00', modality: 'MISTO', code: 'X' },
+      });
+      prisma.theoryExam.create.mockResolvedValue({ id: 'exam-3' });
+
+      await service.registerExam(ORG_ID, { ...scoredExamDto, score: 95, result: 'PENDENTE' });
+
+      expect(prisma.theoryExam.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ result: 'PENDENTE' }) }),
+      );
+    });
+
+    it('falls back to PENDENTE when there is a score but the course has no minimum configured', async () => {
+      prisma.enrollment.findFirst.mockResolvedValue({
+        id: 'enrollment-1',
+        student: { fraud_quarantine_until: null },
+        theoryExams: [],
+        practicalExams: [],
+        attendances: [],
+        course: { min_passing_score: null, modality: 'MISTO', code: 'X' },
+      });
+      prisma.theoryExam.create.mockResolvedValue({ id: 'exam-4' });
+
+      await service.registerExam(ORG_ID, { ...scoredExamDto, score: 95 });
+
+      expect(prisma.theoryExam.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ result: 'PENDENTE' }) }),
+      );
+    });
+  });
+
+  describe('RN-05: automatic certificate issuance on exam/attendance registration', () => {
+    const teoricoExamDto = {
+      type: ExamType.TEORICO,
+      enrollment_id: 'enrollment-1',
+      exam_date: '2026-01-01',
+    };
+
+    it('auto-issues the certificate when registering the exam that completes a TEORICO course', async () => {
+      prisma.enrollment.findFirst
+        .mockResolvedValueOnce({
+          id: 'enrollment-1',
+          student: { fraud_quarantine_until: null },
+          course: { min_passing_score: '70.00', modality: 'TEORICO', code: 'CTA-TEO' },
+        })
+        .mockResolvedValueOnce({
+          id: 'enrollment-1',
+          student_id: 'student-1',
+          course_id: 'course-1',
+          theoryExams: [{ result: 'APROVADO' }],
+          practicalExams: [],
+          attendances: [{ id: 'attendance-1' }],
+          course: { code: 'CTA-TEO', modality: 'TEORICO' },
+        });
+      prisma.theoryExam.create.mockResolvedValue({ id: 'exam-1' });
+      storage.upload.mockResolvedValue('certificates/org-1/CERT-1.pdf');
+      prisma.certificate.create.mockResolvedValue({
+        id: 'certificate-1',
+        certificate_number: 'CERT-org-1-1',
+        file_url: 'certificates/org-1/CERT-1.pdf',
+        issued_at: new Date('2026-01-01'),
+      });
+      prisma.enrollment.update.mockResolvedValue({});
+      prisma.qualification.create.mockResolvedValue({ id: 'qualification-1' });
+
+      const result = await service.registerExam(ORG_ID, { ...teoricoExamDto, score: 90 });
+
+      expect(result).toEqual({ id: 'exam-1', type: ExamType.TEORICO });
+      expect(prisma.certificate.create).toHaveBeenCalled();
+      expect(prisma.qualification.create).toHaveBeenCalled();
+    });
+
+    it('does not auto-issue when the course requirements are still incomplete', async () => {
+      prisma.enrollment.findFirst
+        .mockResolvedValueOnce({
+          id: 'enrollment-1',
+          student: { fraud_quarantine_until: null },
+          course: { min_passing_score: '70.00', modality: 'MISTO', code: 'PPL-101' },
+        })
+        .mockResolvedValueOnce({
+          id: 'enrollment-1',
+          theoryExams: [{ result: 'APROVADO' }],
+          practicalExams: [],
+          attendances: [{ id: 'attendance-1' }],
+          course: { code: 'PPL-101', modality: 'MISTO' },
+        });
+      prisma.theoryExam.create.mockResolvedValue({ id: 'exam-2' });
+
+      await service.registerExam(ORG_ID, { ...teoricoExamDto, score: 90 });
+
+      expect(prisma.certificate.create).not.toHaveBeenCalled();
+    });
+
+    it('does not issue a second certificate when the enrollment already has one', async () => {
+      prisma.enrollment.findFirst.mockResolvedValue({
+        id: 'enrollment-1',
+        student: { fraud_quarantine_until: null },
+        course: { min_passing_score: '70.00', modality: 'TEORICO', code: 'CTA-TEO' },
+      });
+      prisma.certificate.findFirst.mockResolvedValue({ id: 'existing-certificate' });
+      prisma.theoryExam.create.mockResolvedValue({ id: 'exam-3' });
+
+      await service.registerExam(ORG_ID, { ...teoricoExamDto, score: 90 });
+
+      expect(prisma.certificate.create).not.toHaveBeenCalled();
+    });
+
+    it('auto-issues the certificate when registering the attendance that completes a course', async () => {
+      const attendanceDto = {
+        enrollment_id: 'enrollment-1',
+        lesson_id: 'lesson-1',
+        date: '2026-01-01',
+      };
+      prisma.enrollment.findFirst
+        .mockResolvedValueOnce({ id: 'enrollment-1' })
+        .mockResolvedValueOnce({
+          id: 'enrollment-1',
+          student_id: 'student-1',
+          course_id: 'course-1',
+          theoryExams: [{ result: 'APROVADO' }],
+          practicalExams: [{ result: 'APROVADO' }],
+          attendances: [{ id: 'attendance-1' }],
+          course: { code: 'PPL-101', modality: 'MISTO' },
+        });
+      prisma.lesson.findFirst.mockResolvedValue({ id: 'lesson-1' });
+      prisma.attendance.create.mockResolvedValue({ id: 'attendance-1' });
+      storage.upload.mockResolvedValue('certificates/org-1/CERT-2.pdf');
+      prisma.certificate.create.mockResolvedValue({
+        id: 'certificate-2',
+        certificate_number: 'CERT-org-1-2',
+        file_url: 'certificates/org-1/CERT-2.pdf',
+        issued_at: new Date('2026-01-01'),
+      });
+      prisma.enrollment.update.mockResolvedValue({});
+
+      await service.registerAttendance(ORG_ID, attendanceDto);
+
+      expect(prisma.certificate.create).toHaveBeenCalled();
     });
   });
 
