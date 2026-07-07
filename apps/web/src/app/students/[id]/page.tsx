@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { apiFetch } from '../../../lib/api';
 
 interface StudentHistory {
@@ -33,7 +34,15 @@ export default async function StudentHistoryPage({
 
   return (
     <main className="mx-auto max-w-4xl p-8">
-      <h1 className="text-2xl font-semibold text-slate-900">{student.full_name}</h1>
+      <div className="mb-1 flex items-center justify-between">
+        <h1 className="text-2xl font-semibold text-slate-900">{student.full_name}</h1>
+        <Link
+          href={`/students/${params.id}/edit`}
+          className="rounded-md border px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+        >
+          Editar
+        </Link>
+      </div>
       <p className="mb-6 text-sm text-slate-500">
         CPF {student.cpf} · Registro ANAC {student.anac_record_number ?? '—'}
       </p>
