@@ -12,6 +12,7 @@ import { ExamType } from '@orion/shared';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { StorageService } from '../../common/storage/storage.service';
 import { CreateStudentDto } from './dto/create-student.dto';
+import { UpdateStudentDto } from './dto/update-student.dto';
 import { CreateEnrollmentDto } from './dto/create-enrollment.dto';
 import { CreateExamDto } from './dto/create-exam.dto';
 import { CreateCertificateDto } from './dto/create-certificate.dto';
@@ -44,6 +45,39 @@ export class AcademicService {
       where: { organization_id: organizationId, deleted_at: null },
       orderBy: { full_name: 'asc' },
     });
+  }
+
+  async findStudent(organizationId: string, id: string): Promise<Student> {
+    const student = await this.prisma.student.findFirst({
+      where: { id, organization_id: organizationId, deleted_at: null },
+    });
+    if (!student) {
+      throw new NotFoundException('Student not found');
+    }
+    return student;
+  }
+
+  async updateStudent(
+    organizationId: string,
+    id: string,
+    dto: UpdateStudentDto,
+  ): Promise<Student> {
+    await this.findStudent(organizationId, id);
+    return this.prisma.student.update({
+      where: { id },
+      data: {
+        full_name: dto.full_name,
+        cpf: dto.cpf,
+        anac_record_number: dto.anac_record_number,
+        birth_date: dto.birth_date ? new Date(dto.birth_date) : undefined,
+        active: dto.active,
+      },
+    });
+  }
+
+  async deleteStudent(organizationId: string, id: string): Promise<void> {
+    await this.findStudent(organizationId, id);
+    await this.prisma.student.update({ where: { id }, data: { deleted_at: new Date() } });
   }
 
   /** RN-11: enrollment is blocked once the course reaches 25 active students. */
