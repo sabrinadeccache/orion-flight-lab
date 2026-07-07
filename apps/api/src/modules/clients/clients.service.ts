@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { Client, ClientUnit, Contact } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CreateClientDto } from './dto/create-client.dto';
+import { UpdateClientDto } from './dto/update-client.dto';
 import { CreateClientUnitDto } from './dto/create-client-unit.dto';
 import { CreateContactDto } from './dto/create-contact.dto';
 
@@ -34,6 +35,16 @@ export class ClientsService {
   async createContact(organizationId: string, dto: CreateContactDto): Promise<Contact> {
     await this.assertClientInOrg(organizationId, dto.client_id);
     return this.prisma.contact.create({ data: { organization_id: organizationId, ...dto } });
+  }
+
+  async updateClient(organizationId: string, id: string, dto: UpdateClientDto): Promise<Client> {
+    await this.assertClientInOrg(organizationId, id);
+    return this.prisma.client.update({ where: { id }, data: dto });
+  }
+
+  async deleteClient(organizationId: string, id: string): Promise<void> {
+    await this.assertClientInOrg(organizationId, id);
+    await this.prisma.client.update({ where: { id }, data: { deleted_at: new Date() } });
   }
 
   /** Prevents linking a unit/contact to another organization's client. */
