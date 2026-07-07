@@ -1,6 +1,7 @@
 'use client';
 
 import { FormEvent, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useSupabase } from '../../../../components/providers/supabase-provider';
 
@@ -107,6 +108,9 @@ export default function EditContractPage({
 
   return (
     <main className="mx-auto max-w-lg p-8">
+      <Link href="/contracts" className="mb-4 inline-block text-sm text-slate-600 hover:underline">
+        ← Voltar para Contratos
+      </Link>
       <h1 className="mb-6 text-2xl font-semibold text-slate-900">Editar contrato</h1>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>

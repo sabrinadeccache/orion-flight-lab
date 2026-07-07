@@ -12,6 +12,9 @@ export default async function NewContractPage(): Promise<React.ReactElement> {
 
   return (
     <main className="mx-auto max-w-lg p-8">
+      <Link href="/contracts" className="mb-4 inline-block text-sm text-slate-600 hover:underline">
+        ← Voltar para Contratos
+      </Link>
       <h1 className="mb-6 text-2xl font-semibold text-slate-900">Novo contrato</h1>
 
       {clients.length === 0 ? (

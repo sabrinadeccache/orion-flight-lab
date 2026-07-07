@@ -1,6 +1,7 @@
 'use client';
 
 import { FormEvent, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useSupabase } from '../../../../components/providers/supabase-provider';
 
@@ -102,6 +103,9 @@ export default function EditClientPage({ params }: { params: { id: string } }): 
 
   return (
     <main className="mx-auto max-w-lg p-8">
+      <Link href="/clients" className="mb-4 inline-block text-sm text-slate-600 hover:underline">
+        ← Voltar para Clientes
+      </Link>
       <h1 className="mb-6 text-2xl font-semibold text-slate-900">Editar cliente</h1>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
