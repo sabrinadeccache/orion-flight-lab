@@ -54,6 +54,12 @@ export default async function CoursesPage(): Promise<React.ReactElement> {
                 <td className="px-4 py-2">{course.status}</td>
                 <td className="px-4 py-2">{course.max_students}</td>
                 <td className="px-4 py-2 text-right">
+                  <Link
+                    href={`/courses/${course.id}/content`}
+                    className="mr-3 text-slate-600 hover:underline"
+                  >
+                    Conteúdo
+                  </Link>
                   <Link href={`/courses/${course.id}/edit`} className="text-slate-600 hover:underline">
                     Editar
                   </Link>
