@@ -3,6 +3,7 @@ import { Test } from '@nestjs/testing';
 import { MaterialType } from '@prisma/client';
 import { TrainingService } from './training.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { StorageService } from '../../common/storage/storage.service';
 
 const ORG_ID = 'org-1';
 
@@ -30,7 +31,11 @@ describe('TrainingService — content hierarchy (Segment -> Material)', () => {
     };
 
     const module = await Test.createTestingModule({
-      providers: [TrainingService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        TrainingService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: StorageService, useValue: { upload: jest.fn(), createSignedUrl: jest.fn() } },
+      ],
     }).compile();
 
     service = module.get(TrainingService);
@@ -175,6 +180,44 @@ describe('TrainingService — content hierarchy (Segment -> Material)', () => {
       });
 
       expect(result).toEqual({ id: 'material-2' });
+    });
+  });
+
+  describe('uploadMaterialFile / getMaterialDownloadUrl', () => {
+    it('uploads to the lms-materials bucket and forces type ARQUIVO', async () => {
+      prisma.material.findFirst.mockResolvedValue({ id: 'material-1' });
+      prisma.material.update.mockResolvedValue({ id: 'material-1', type: 'ARQUIVO' });
+      const storage = { upload: jest.fn().mockResolvedValue('org-1/material-1'), createSignedUrl: jest.fn() };
+      const moduleRef = await Test.createTestingModule({
+        providers: [
+          TrainingService,
+          { provide: PrismaService, useValue: prisma },
+          { provide: StorageService, useValue: storage },
+        ],
+      }).compile();
+      const svc = moduleRef.get(TrainingService);
+
+      await svc.uploadMaterialFile(ORG_ID, 'material-1', Buffer.from('data'), 'application/pdf');
+
+      expect(storage.upload).toHaveBeenCalledWith(
+        'lms-materials',
+        ORG_ID,
+        'material-1',
+        Buffer.from('data'),
+        'application/pdf',
+      );
+      expect(prisma.material.update).toHaveBeenCalledWith({
+        where: { id: 'material-1' },
+        data: { type: 'ARQUIVO', file_url: 'org-1/material-1' },
+      });
+    });
+
+    it('rejects uploading to a material outside the organization', async () => {
+      prisma.material.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.uploadMaterialFile(ORG_ID, 'material-1', Buffer.from('data')),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 

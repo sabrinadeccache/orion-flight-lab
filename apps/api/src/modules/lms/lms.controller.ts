@@ -53,6 +53,13 @@ export class LmsController {
     return this.lmsService.markLessonProgress(user.organizationId, user.id, id, dto);
   }
 
+  @Get('materials/:id/download')
+  @UseGuards(RolesGuard)
+  @Roles(Role.ALUNO)
+  getMaterialDownloadUrl(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.lmsService.getMaterialDownloadUrl(user.organizationId, user.id, id);
+  }
+
   @Get('courses/:id/progress')
   @UseGuards(RolesGuard)
   @Roles(...PROGRESS_VIEWER_ROLES)

@@ -12,6 +12,7 @@ import {
   Unit,
 } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { StorageService } from '../../common/storage/storage.service';
 import { CreateTrainingProgramDto } from './dto/create-training-program.dto';
 import { CreateCurriculumDto } from './dto/create-curriculum.dto';
 import { CreateCourseDto } from './dto/create-course.dto';
@@ -31,7 +32,10 @@ import { UpdateMaterialDto } from './dto/update-material.dto';
 
 @Injectable()
 export class TrainingService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly storage: StorageService,
+  ) {}
 
   name(): string {
     return 'training';
@@ -370,6 +374,28 @@ export class TrainingService {
   async deleteMaterial(organizationId: string, id: string): Promise<void> {
     await this.findMaterial(organizationId, id);
     await this.prisma.material.update({ where: { id }, data: { deleted_at: new Date() } });
+  }
+
+  /** Uploads the file for a MaterialType.ARQUIVO material to the private lms-materials bucket. */
+  async uploadMaterialFile(
+    organizationId: string,
+    id: string,
+    file: Buffer,
+    contentType?: string,
+  ): Promise<Material> {
+    await this.findMaterial(organizationId, id);
+    const fileUrl = await this.storage.upload('lms-materials', organizationId, id, file, contentType);
+    return this.prisma.material.update({
+      where: { id },
+      data: { type: MaterialType.ARQUIVO, file_url: fileUrl },
+    });
+  }
+
+  /** Signed URL for a staff member previewing an uploaded Material file. */
+  async getMaterialDownloadUrl(organizationId: string, id: string): Promise<string | null> {
+    const material = await this.findMaterial(organizationId, id);
+    if (!material.file_url) return null;
+    return this.storage.createSignedUrl('lms-materials', material.file_url);
   }
 
   /** ARQUIVO/VIDEO_EXTERNO need a URL; TEXTO needs inline HTML content. */

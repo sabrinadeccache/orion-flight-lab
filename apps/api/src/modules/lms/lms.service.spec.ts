@@ -3,6 +3,7 @@ import { Test } from '@nestjs/testing';
 import { LessonProgressStatus } from '@prisma/client';
 import { LmsService } from './lms.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { StorageService } from '../../common/storage/storage.service';
 import { AcademicService } from '../academic/academic.service';
 
 const ORG_ID = 'org-1';
@@ -18,6 +19,7 @@ describe('LmsService', () => {
     course: { findFirst: jest.Mock };
     quiz: { findFirst: jest.Mock; create: jest.Mock };
     quizAttempt: { create: jest.Mock };
+    material: { findFirst: jest.Mock };
   };
   let academicService: { registerAttendance: jest.Mock };
 
@@ -35,6 +37,7 @@ describe('LmsService', () => {
       course: { findFirst: jest.fn() },
       quiz: { findFirst: jest.fn(), create: jest.fn() },
       quizAttempt: { create: jest.fn() },
+      material: { findFirst: jest.fn() },
     };
     academicService = { registerAttendance: jest.fn() };
 
@@ -42,6 +45,7 @@ describe('LmsService', () => {
       providers: [
         LmsService,
         { provide: PrismaService, useValue: prisma },
+        { provide: StorageService, useValue: { upload: jest.fn(), createSignedUrl: jest.fn() } },
         { provide: AcademicService, useValue: academicService },
       ],
     }).compile();
@@ -126,6 +130,52 @@ describe('LmsService', () => {
       });
 
       expect(academicService.registerAttendance).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getMaterialDownloadUrl', () => {
+    let storage: { upload: jest.Mock; createSignedUrl: jest.Mock };
+
+    beforeEach(async () => {
+      storage = { upload: jest.fn(), createSignedUrl: jest.fn() };
+      const module = await Test.createTestingModule({
+        providers: [
+          LmsService,
+          { provide: PrismaService, useValue: prisma },
+          { provide: StorageService, useValue: storage },
+          { provide: AcademicService, useValue: academicService },
+        ],
+      }).compile();
+      service = module.get(LmsService);
+
+      prisma.student.findFirst.mockResolvedValue({ id: 'student-1' });
+    });
+
+    const materialWithLesson = {
+      id: 'material-1',
+      file_url: 'org-1/material-1',
+      lesson: { subUnit: { unit: { module: { segment: { course_id: 'course-1' } } } } },
+    };
+
+    it('rejects a student not enrolled in the material\'s course (IDOR)', async () => {
+      prisma.material.findFirst.mockResolvedValue(materialWithLesson);
+      prisma.enrollment.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.getMaterialDownloadUrl(ORG_ID, USER_ID, 'material-1'),
+      ).rejects.toThrow(ForbiddenException);
+      expect(storage.createSignedUrl).not.toHaveBeenCalled();
+    });
+
+    it('returns a signed URL once enrollment is confirmed', async () => {
+      prisma.material.findFirst.mockResolvedValue(materialWithLesson);
+      prisma.enrollment.findFirst.mockResolvedValue({ id: 'enrollment-1' });
+      storage.createSignedUrl.mockResolvedValue('https://signed.example/material-1');
+
+      const result = await service.getMaterialDownloadUrl(ORG_ID, USER_ID, 'material-1');
+
+      expect(result).toEqual({ url: 'https://signed.example/material-1' });
+      expect(storage.createSignedUrl).toHaveBeenCalledWith('lms-materials', 'org-1/material-1');
     });
   });
 

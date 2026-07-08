@@ -10,6 +10,7 @@ import {
   Student,
 } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { StorageService } from '../../common/storage/storage.service';
 import { AcademicService } from '../academic/academic.service';
 import { MarkLessonProgressDto } from './dto/mark-lesson-progress.dto';
 import { CreateQuizDto } from './dto/create-quiz.dto';
@@ -30,6 +31,7 @@ type EnrollmentSummary = Enrollment & {
 export class LmsService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly storage: StorageService,
     private readonly academicService: AcademicService,
   ) {}
 
@@ -219,6 +221,40 @@ export class LmsService {
     }
 
     return progress;
+  }
+
+  /** Student-facing signed URL for a Material file, gated by enrollment (IDOR). */
+  async getMaterialDownloadUrl(
+    organizationId: string,
+    userProfileId: string,
+    materialId: string,
+  ): Promise<{ url: string | null }> {
+    const student = await this.resolveStudent(organizationId, userProfileId);
+
+    const material = await this.prisma.material.findFirst({
+      where: { id: materialId, organization_id: organizationId, deleted_at: null },
+      include: {
+        lesson: { include: { subUnit: { include: { unit: { include: { module: { include: { segment: true } } } } } } } },
+      },
+    });
+    if (!material) {
+      throw new NotFoundException('Material not found');
+    }
+
+    const courseId = material.lesson.subUnit.unit.module.segment.course_id;
+    const enrollment = await this.prisma.enrollment.findFirst({
+      where: { student_id: student.id, course_id: courseId, organization_id: organizationId, deleted_at: null },
+      select: { id: true },
+    });
+    if (!enrollment) {
+      throw new ForbiddenException('Student is not enrolled in this material\'s course');
+    }
+    if (!material.file_url) {
+      return { url: null };
+    }
+
+    const url = await this.storage.createSignedUrl('lms-materials', material.file_url);
+    return { url };
   }
 
   async getCourseProgress(organizationId: string, courseId: string) {

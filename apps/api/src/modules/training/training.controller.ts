@@ -1,4 +1,16 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import {
   Course,
   Curriculum,
@@ -39,6 +51,26 @@ import { UpdateMaterialDto } from './dto/update-material.dto';
 /** Roles allowed to author course content (Segment through Material). */
 const CONTENT_AUTHOR_ROLES = [Role.ADMIN, Role.COORDENADOR_ACADEMICO, Role.INSTRUTOR];
 
+/**
+ * Every staff role — i.e. every role except ALUNO. The training module is
+ * the back-office content-management API; a student's only access to course
+ * content is through the enrollment-scoped `lms` module, never these raw
+ * CRUD reads. Without this, any authenticated user (now including students,
+ * since ALUNO can log in for real — see academic module invite flow) could
+ * browse every course/segment/lesson in the organization directly via API.
+ */
+const STAFF_ROLES = [
+  Role.ADMIN,
+  Role.GERENTE_QUALIDADE,
+  Role.GERENTE_SEGURANCA,
+  Role.COORDENADOR_ACADEMICO,
+  Role.INSTRUTOR,
+  Role.EXAMINADOR,
+  Role.SECRETARIA_ACADEMICA,
+  Role.COMERCIAL,
+  Role.FINANCEIRO,
+];
+
 @Controller('training')
 export class TrainingController {
   constructor(private readonly trainingService: TrainingService) {}
@@ -49,7 +81,8 @@ export class TrainingController {
   }
 
   @Post('programs')
-  @UseGuards(SupabaseAuthGuard, OrganizationGuard)
+  @UseGuards(SupabaseAuthGuard, OrganizationGuard, RolesGuard)
+  @Roles(...STAFF_ROLES)
   @AuditLog({ action: 'create', entity: 'TrainingProgram' })
   createProgram(
     @CurrentUser() user: AuthenticatedUser,
@@ -59,13 +92,15 @@ export class TrainingController {
   }
 
   @Get('programs')
-  @UseGuards(SupabaseAuthGuard, OrganizationGuard)
+  @UseGuards(SupabaseAuthGuard, OrganizationGuard, RolesGuard)
+  @Roles(...STAFF_ROLES)
   findPrograms(@CurrentUser() user: AuthenticatedUser): Promise<TrainingProgram[]> {
     return this.trainingService.findTrainingPrograms(user.organizationId);
   }
 
   @Post('curricula')
-  @UseGuards(SupabaseAuthGuard, OrganizationGuard)
+  @UseGuards(SupabaseAuthGuard, OrganizationGuard, RolesGuard)
+  @Roles(...STAFF_ROLES)
   @AuditLog({ action: 'create', entity: 'Curriculum' })
   createCurriculum(
     @CurrentUser() user: AuthenticatedUser,
@@ -75,13 +110,15 @@ export class TrainingController {
   }
 
   @Get('curricula')
-  @UseGuards(SupabaseAuthGuard, OrganizationGuard)
+  @UseGuards(SupabaseAuthGuard, OrganizationGuard, RolesGuard)
+  @Roles(...STAFF_ROLES)
   findCurricula(@CurrentUser() user: AuthenticatedUser): Promise<Curriculum[]> {
     return this.trainingService.findCurricula(user.organizationId);
   }
 
   @Post('courses')
-  @UseGuards(SupabaseAuthGuard, OrganizationGuard)
+  @UseGuards(SupabaseAuthGuard, OrganizationGuard, RolesGuard)
+  @Roles(...STAFF_ROLES)
   @AuditLog({ action: 'create', entity: 'Course' })
   createCourse(
     @CurrentUser() user: AuthenticatedUser,
@@ -91,19 +128,22 @@ export class TrainingController {
   }
 
   @Get('courses')
-  @UseGuards(SupabaseAuthGuard, OrganizationGuard)
+  @UseGuards(SupabaseAuthGuard, OrganizationGuard, RolesGuard)
+  @Roles(...STAFF_ROLES)
   findCourses(@CurrentUser() user: AuthenticatedUser): Promise<Course[]> {
     return this.trainingService.findCourses(user.organizationId);
   }
 
   @Get('courses/:id')
-  @UseGuards(SupabaseAuthGuard, OrganizationGuard)
+  @UseGuards(SupabaseAuthGuard, OrganizationGuard, RolesGuard)
+  @Roles(...STAFF_ROLES)
   findCourse(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string): Promise<Course> {
     return this.trainingService.findCourse(user.organizationId, id);
   }
 
   @Patch('courses/:id')
-  @UseGuards(SupabaseAuthGuard, OrganizationGuard)
+  @UseGuards(SupabaseAuthGuard, OrganizationGuard, RolesGuard)
+  @Roles(...STAFF_ROLES)
   @AuditLog({ action: 'update', entity: 'Course' })
   updateCourse(
     @CurrentUser() user: AuthenticatedUser,
@@ -114,7 +154,8 @@ export class TrainingController {
   }
 
   @Delete('courses/:id')
-  @UseGuards(SupabaseAuthGuard, OrganizationGuard)
+  @UseGuards(SupabaseAuthGuard, OrganizationGuard, RolesGuard)
+  @Roles(...STAFF_ROLES)
   @AuditLog({ action: 'delete', entity: 'Course' })
   deleteCourse(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string): Promise<void> {
     return this.trainingService.deleteCourse(user.organizationId, id);
@@ -125,7 +166,8 @@ export class TrainingController {
   // ---------------------------------------------------------------------
 
   @Get('courses/:courseId/segments')
-  @UseGuards(SupabaseAuthGuard, OrganizationGuard)
+  @UseGuards(SupabaseAuthGuard, OrganizationGuard, RolesGuard)
+  @Roles(...STAFF_ROLES)
   findSegmentsByCourse(
     @CurrentUser() user: AuthenticatedUser,
     @Param('courseId') courseId: string,
@@ -145,7 +187,8 @@ export class TrainingController {
   }
 
   @Get('segments/:id')
-  @UseGuards(SupabaseAuthGuard, OrganizationGuard)
+  @UseGuards(SupabaseAuthGuard, OrganizationGuard, RolesGuard)
+  @Roles(...STAFF_ROLES)
   findSegment(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string): Promise<Segment> {
     return this.trainingService.findSegment(user.organizationId, id);
   }
@@ -175,7 +218,8 @@ export class TrainingController {
   // ---------------------------------------------------------------------
 
   @Get('segments/:segmentId/modules')
-  @UseGuards(SupabaseAuthGuard, OrganizationGuard)
+  @UseGuards(SupabaseAuthGuard, OrganizationGuard, RolesGuard)
+  @Roles(...STAFF_ROLES)
   findModulesBySegment(
     @CurrentUser() user: AuthenticatedUser,
     @Param('segmentId') segmentId: string,
@@ -195,7 +239,8 @@ export class TrainingController {
   }
 
   @Get('modules/:id')
-  @UseGuards(SupabaseAuthGuard, OrganizationGuard)
+  @UseGuards(SupabaseAuthGuard, OrganizationGuard, RolesGuard)
+  @Roles(...STAFF_ROLES)
   findModule(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string): Promise<ModuleEntity> {
     return this.trainingService.findModule(user.organizationId, id);
   }
@@ -225,7 +270,8 @@ export class TrainingController {
   // ---------------------------------------------------------------------
 
   @Get('modules/:moduleId/units')
-  @UseGuards(SupabaseAuthGuard, OrganizationGuard)
+  @UseGuards(SupabaseAuthGuard, OrganizationGuard, RolesGuard)
+  @Roles(...STAFF_ROLES)
   findUnitsByModule(
     @CurrentUser() user: AuthenticatedUser,
     @Param('moduleId') moduleId: string,
@@ -242,7 +288,8 @@ export class TrainingController {
   }
 
   @Get('units/:id')
-  @UseGuards(SupabaseAuthGuard, OrganizationGuard)
+  @UseGuards(SupabaseAuthGuard, OrganizationGuard, RolesGuard)
+  @Roles(...STAFF_ROLES)
   findUnit(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string): Promise<Unit> {
     return this.trainingService.findUnit(user.organizationId, id);
   }
@@ -272,7 +319,8 @@ export class TrainingController {
   // ---------------------------------------------------------------------
 
   @Get('units/:unitId/sub-units')
-  @UseGuards(SupabaseAuthGuard, OrganizationGuard)
+  @UseGuards(SupabaseAuthGuard, OrganizationGuard, RolesGuard)
+  @Roles(...STAFF_ROLES)
   findSubUnitsByUnit(
     @CurrentUser() user: AuthenticatedUser,
     @Param('unitId') unitId: string,
@@ -292,7 +340,8 @@ export class TrainingController {
   }
 
   @Get('sub-units/:id')
-  @UseGuards(SupabaseAuthGuard, OrganizationGuard)
+  @UseGuards(SupabaseAuthGuard, OrganizationGuard, RolesGuard)
+  @Roles(...STAFF_ROLES)
   findSubUnit(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string): Promise<SubUnit> {
     return this.trainingService.findSubUnit(user.organizationId, id);
   }
@@ -322,7 +371,8 @@ export class TrainingController {
   // ---------------------------------------------------------------------
 
   @Get('sub-units/:subUnitId/lessons')
-  @UseGuards(SupabaseAuthGuard, OrganizationGuard)
+  @UseGuards(SupabaseAuthGuard, OrganizationGuard, RolesGuard)
+  @Roles(...STAFF_ROLES)
   findLessonsBySubUnit(
     @CurrentUser() user: AuthenticatedUser,
     @Param('subUnitId') subUnitId: string,
@@ -339,7 +389,8 @@ export class TrainingController {
   }
 
   @Get('lessons/:id')
-  @UseGuards(SupabaseAuthGuard, OrganizationGuard)
+  @UseGuards(SupabaseAuthGuard, OrganizationGuard, RolesGuard)
+  @Roles(...STAFF_ROLES)
   findLesson(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string): Promise<Lesson> {
     return this.trainingService.findLesson(user.organizationId, id);
   }
@@ -369,7 +420,8 @@ export class TrainingController {
   // ---------------------------------------------------------------------
 
   @Get('lessons/:lessonId/materials')
-  @UseGuards(SupabaseAuthGuard, OrganizationGuard)
+  @UseGuards(SupabaseAuthGuard, OrganizationGuard, RolesGuard)
+  @Roles(...STAFF_ROLES)
   findMaterialsByLesson(
     @CurrentUser() user: AuthenticatedUser,
     @Param('lessonId') lessonId: string,
@@ -389,7 +441,8 @@ export class TrainingController {
   }
 
   @Get('materials/:id')
-  @UseGuards(SupabaseAuthGuard, OrganizationGuard)
+  @UseGuards(SupabaseAuthGuard, OrganizationGuard, RolesGuard)
+  @Roles(...STAFF_ROLES)
   findMaterial(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string): Promise<Material> {
     return this.trainingService.findMaterial(user.organizationId, id);
   }
@@ -412,5 +465,35 @@ export class TrainingController {
   @AuditLog({ action: 'delete', entity: 'Material' })
   deleteMaterial(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string): Promise<void> {
     return this.trainingService.deleteMaterial(user.organizationId, id);
+  }
+
+  @Post('materials/:id/upload')
+  @UseGuards(SupabaseAuthGuard, OrganizationGuard, RolesGuard)
+  @Roles(...CONTENT_AUTHOR_ROLES)
+  @UseInterceptors(FileInterceptor('file'))
+  @AuditLog({ action: 'update', entity: 'Material' })
+  uploadMaterialFile(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+  ): Promise<Material> {
+    return this.trainingService.uploadMaterialFile(
+      user.organizationId,
+      id,
+      file?.buffer ?? Buffer.from(''),
+      file?.mimetype,
+    );
+  }
+
+  @Get('materials/:id/download')
+  @UseGuards(SupabaseAuthGuard, OrganizationGuard, RolesGuard)
+  @Roles(...STAFF_ROLES)
+  getMaterialDownloadUrl(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+  ): Promise<{ url: string | null }> {
+    return this.trainingService
+      .getMaterialDownloadUrl(user.organizationId, id)
+      .then((url) => ({ url }));
   }
 }
