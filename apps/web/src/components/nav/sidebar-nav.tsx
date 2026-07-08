@@ -20,6 +20,8 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/documents', label: 'Documentos' },
   { href: '/clients', label: 'Clientes', roles: ['ADMIN', 'COMERCIAL'] },
   { href: '/contracts', label: 'Contratos', roles: ['ADMIN', 'FINANCEIRO', 'COMERCIAL'] },
+  { href: '/sgq/audit-programs', label: 'SGQ', roles: ['ADMIN', 'GERENTE_QUALIDADE'] },
+  { href: '/sgso/hazards', label: 'SGSO', roles: ['ADMIN', 'GERENTE_SEGURANCA'] },
   { href: '/reports', label: 'Relatórios', roles: ['ADMIN', 'GERENTE_QUALIDADE', 'GERENTE_SEGURANCA'] },
 ];
 
