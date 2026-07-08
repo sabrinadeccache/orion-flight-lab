@@ -1,8 +1,24 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { Enrollment, LessonProgress, LessonProgressStatus, Student } from '@prisma/client';
+import {
+  Enrollment,
+  LessonProgress,
+  LessonProgressStatus,
+  Quiz,
+  QuizAttempt,
+  QuizOption,
+  QuizQuestion,
+  Student,
+} from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AcademicService } from '../academic/academic.service';
 import { MarkLessonProgressDto } from './dto/mark-lesson-progress.dto';
+import { CreateQuizDto } from './dto/create-quiz.dto';
+import { UpdateQuizDto } from './dto/update-quiz.dto';
+import { CreateQuizQuestionDto } from './dto/create-quiz-question.dto';
+import { UpdateQuizQuestionDto } from './dto/update-quiz-question.dto';
+import { CreateQuizOptionDto } from './dto/create-quiz-option.dto';
+import { UpdateQuizOptionDto } from './dto/update-quiz-option.dto';
+import { SubmitQuizAttemptDto } from './dto/submit-quiz-attempt.dto';
 
 type EnrollmentSummary = Enrollment & {
   course: { id: string; name: string; code: string; status: string };
@@ -234,5 +250,200 @@ export class LmsService {
         };
       }),
     );
+  }
+
+  // ---------------------------------------------------------------------
+  // Quiz authoring (staff)
+  // ---------------------------------------------------------------------
+
+  async createQuiz(organizationId: string, dto: CreateQuizDto): Promise<Quiz> {
+    const lesson = await this.prisma.lesson.findFirst({
+      where: { id: dto.lesson_id, organization_id: organizationId, deleted_at: null },
+      select: { id: true },
+    });
+    if (!lesson) throw new NotFoundException('Lesson not found');
+    return this.prisma.quiz.create({ data: { organization_id: organizationId, ...dto } });
+  }
+
+  async getQuizByLesson(organizationId: string, lessonId: string): Promise<Quiz | null> {
+    return this.prisma.quiz.findFirst({
+      where: { organization_id: organizationId, lesson_id: lessonId, deleted_at: null },
+      include: { questions: { where: { deleted_at: null }, orderBy: { order: 'asc' }, include: { options: { where: { deleted_at: null } } } } },
+    });
+  }
+
+  async findQuiz(organizationId: string, id: string) {
+    const quiz = await this.prisma.quiz.findFirst({
+      where: { id, organization_id: organizationId, deleted_at: null },
+      include: { questions: { where: { deleted_at: null }, orderBy: { order: 'asc' }, include: { options: { where: { deleted_at: null } } } } },
+    });
+    if (!quiz) throw new NotFoundException('Quiz not found');
+    return quiz;
+  }
+
+  async updateQuiz(organizationId: string, id: string, dto: UpdateQuizDto): Promise<Quiz> {
+    await this.assertQuizExists(organizationId, id);
+    return this.prisma.quiz.update({ where: { id }, data: dto });
+  }
+
+  async deleteQuiz(organizationId: string, id: string): Promise<void> {
+    await this.assertQuizExists(organizationId, id);
+    await this.prisma.quiz.update({ where: { id }, data: { deleted_at: new Date() } });
+  }
+
+  private async assertQuizExists(organizationId: string, id: string): Promise<void> {
+    const quiz = await this.prisma.quiz.findFirst({
+      where: { id, organization_id: organizationId, deleted_at: null },
+      select: { id: true },
+    });
+    if (!quiz) throw new NotFoundException('Quiz not found');
+  }
+
+  async createQuizQuestion(organizationId: string, dto: CreateQuizQuestionDto): Promise<QuizQuestion> {
+    const quiz = await this.prisma.quiz.findFirst({
+      where: { id: dto.quiz_id, organization_id: organizationId, deleted_at: null },
+      select: { id: true },
+    });
+    if (!quiz) throw new NotFoundException('Quiz not found');
+    return this.prisma.quizQuestion.create({ data: { organization_id: organizationId, ...dto } });
+  }
+
+  async updateQuizQuestion(
+    organizationId: string,
+    id: string,
+    dto: UpdateQuizQuestionDto,
+  ): Promise<QuizQuestion> {
+    await this.assertQuizQuestionExists(organizationId, id);
+    return this.prisma.quizQuestion.update({ where: { id }, data: dto });
+  }
+
+  async deleteQuizQuestion(organizationId: string, id: string): Promise<void> {
+    await this.assertQuizQuestionExists(organizationId, id);
+    await this.prisma.quizQuestion.update({ where: { id }, data: { deleted_at: new Date() } });
+  }
+
+  private async assertQuizQuestionExists(organizationId: string, id: string): Promise<void> {
+    const question = await this.prisma.quizQuestion.findFirst({
+      where: { id, organization_id: organizationId, deleted_at: null },
+      select: { id: true },
+    });
+    if (!question) throw new NotFoundException('QuizQuestion not found');
+  }
+
+  async createQuizOption(organizationId: string, dto: CreateQuizOptionDto): Promise<QuizOption> {
+    const question = await this.prisma.quizQuestion.findFirst({
+      where: { id: dto.question_id, organization_id: organizationId, deleted_at: null },
+      select: { id: true },
+    });
+    if (!question) throw new NotFoundException('QuizQuestion not found');
+    return this.prisma.quizOption.create({ data: { organization_id: organizationId, ...dto } });
+  }
+
+  async updateQuizOption(
+    organizationId: string,
+    id: string,
+    dto: UpdateQuizOptionDto,
+  ): Promise<QuizOption> {
+    await this.assertQuizOptionExists(organizationId, id);
+    return this.prisma.quizOption.update({ where: { id }, data: dto });
+  }
+
+  async deleteQuizOption(organizationId: string, id: string): Promise<void> {
+    await this.assertQuizOptionExists(organizationId, id);
+    await this.prisma.quizOption.update({ where: { id }, data: { deleted_at: new Date() } });
+  }
+
+  private async assertQuizOptionExists(organizationId: string, id: string): Promise<void> {
+    const option = await this.prisma.quizOption.findFirst({
+      where: { id, organization_id: organizationId, deleted_at: null },
+      select: { id: true },
+    });
+    if (!option) throw new NotFoundException('QuizOption not found');
+  }
+
+  // ---------------------------------------------------------------------
+  // Quiz attempts (student)
+  // ---------------------------------------------------------------------
+
+  /**
+   * Student-facing quiz fetch, used to render the attempt form. Strips
+   * QuizOption.is_correct — unlike findQuiz/getQuizByLesson (staff-only
+   * authoring views), this must never leak the answer key to the student
+   * taking the quiz. Also checks the student is actually enrolled in the
+   * quiz's lesson's course (IDOR).
+   */
+  async getQuizForAttempt(organizationId: string, userProfileId: string, quizId: string) {
+    const student = await this.resolveStudent(organizationId, userProfileId);
+
+    const quiz = await this.prisma.quiz.findFirst({
+      where: { id: quizId, organization_id: organizationId, deleted_at: null },
+      include: {
+        lesson: { include: { subUnit: { include: { unit: { include: { module: { include: { segment: true } } } } } } } },
+        questions: {
+          where: { deleted_at: null },
+          orderBy: { order: 'asc' },
+          include: { options: { where: { deleted_at: null } } },
+        },
+      },
+    });
+    if (!quiz) throw new NotFoundException('Quiz not found');
+
+    const courseId = quiz.lesson.subUnit.unit.module.segment.course_id;
+    const enrollment = await this.prisma.enrollment.findFirst({
+      where: { student_id: student.id, course_id: courseId, organization_id: organizationId, deleted_at: null },
+      select: { id: true },
+    });
+    if (!enrollment) {
+      throw new ForbiddenException('Student is not enrolled in this quiz\'s course');
+    }
+
+    return {
+      id: quiz.id,
+      title: quiz.title,
+      questions: quiz.questions.map((question) => ({
+        id: question.id,
+        prompt: question.prompt,
+        order: question.order,
+        options: question.options.map((option) => ({ id: option.id, text: option.text })),
+      })),
+    };
+  }
+
+  /**
+   * Formative only — does not gate lesson completion or the certificate
+   * (RN-05 is still driven solely by TheoryExam/PracticalExam/Attendance).
+   * Score is the percentage of questions answered with the correct option.
+   */
+  async submitQuizAttempt(
+    organizationId: string,
+    userProfileId: string,
+    quizId: string,
+    dto: SubmitQuizAttemptDto,
+  ): Promise<QuizAttempt> {
+    const student = await this.resolveStudent(organizationId, userProfileId);
+
+    const quiz = await this.prisma.quiz.findFirst({
+      where: { id: quizId, organization_id: organizationId, deleted_at: null },
+      include: { questions: { where: { deleted_at: null }, include: { options: { where: { deleted_at: null } } } } },
+    });
+    if (!quiz) throw new NotFoundException('Quiz not found');
+
+    const totalQuestions = quiz.questions.length;
+    const correctAnswers = quiz.questions.filter((question) => {
+      const chosenOptionId = dto.answers[question.id];
+      const chosenOption = question.options.find((option) => option.id === chosenOptionId);
+      return chosenOption?.is_correct === true;
+    }).length;
+    const score = totalQuestions > 0 ? (correctAnswers / totalQuestions) * 100 : 0;
+
+    return this.prisma.quizAttempt.create({
+      data: {
+        organization_id: organizationId,
+        quiz_id: quizId,
+        student_id: student.id,
+        score,
+        answers: dto.answers,
+      },
+    });
   }
 }

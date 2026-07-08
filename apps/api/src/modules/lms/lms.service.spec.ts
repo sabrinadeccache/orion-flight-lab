@@ -16,6 +16,8 @@ describe('LmsService', () => {
     lesson: { count: jest.Mock; findFirst: jest.Mock };
     lessonProgress: { count: jest.Mock; findMany: jest.Mock; findUnique: jest.Mock; upsert: jest.Mock };
     course: { findFirst: jest.Mock };
+    quiz: { findFirst: jest.Mock; create: jest.Mock };
+    quizAttempt: { create: jest.Mock };
   };
   let academicService: { registerAttendance: jest.Mock };
 
@@ -31,6 +33,8 @@ describe('LmsService', () => {
         upsert: jest.fn(),
       },
       course: { findFirst: jest.fn() },
+      quiz: { findFirst: jest.fn(), create: jest.fn() },
+      quizAttempt: { create: jest.fn() },
     };
     academicService = { registerAttendance: jest.fn() };
 
@@ -150,6 +154,119 @@ describe('LmsService', () => {
           completedLessons: 2,
           percent: 50,
         },
+      ]);
+    });
+  });
+
+  describe('submitQuizAttempt', () => {
+    const quizWithQuestions = {
+      id: 'quiz-1',
+      questions: [
+        {
+          id: 'question-1',
+          options: [
+            { id: 'option-1', is_correct: true },
+            { id: 'option-2', is_correct: false },
+          ],
+        },
+        {
+          id: 'question-2',
+          options: [
+            { id: 'option-3', is_correct: false },
+            { id: 'option-4', is_correct: true },
+          ],
+        },
+      ],
+    };
+
+    beforeEach(() => {
+      prisma.student.findFirst.mockResolvedValue({ id: 'student-1' });
+      prisma.quiz.findFirst.mockResolvedValue(quizWithQuestions);
+    });
+
+    it('throws NotFoundException for a quiz outside the organization', async () => {
+      prisma.quiz.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.submitQuizAttempt(ORG_ID, USER_ID, 'quiz-1', { answers: {} }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('scores 100 when every answer is correct', async () => {
+      prisma.quizAttempt.create.mockResolvedValue({ id: 'attempt-1', score: 100 });
+
+      await service.submitQuizAttempt(ORG_ID, USER_ID, 'quiz-1', {
+        answers: { 'question-1': 'option-1', 'question-2': 'option-4' },
+      });
+
+      expect(prisma.quizAttempt.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ score: 100, student_id: 'student-1', quiz_id: 'quiz-1' }),
+      });
+    });
+
+    it('scores 50 when only one of two answers is correct', async () => {
+      prisma.quizAttempt.create.mockResolvedValue({ id: 'attempt-1', score: 50 });
+
+      await service.submitQuizAttempt(ORG_ID, USER_ID, 'quiz-1', {
+        answers: { 'question-1': 'option-1', 'question-2': 'option-3' },
+      });
+
+      expect(prisma.quizAttempt.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ score: 50 }),
+      });
+    });
+
+    it('scores 0 when a question is left unanswered', async () => {
+      prisma.quizAttempt.create.mockResolvedValue({ id: 'attempt-1', score: 0 });
+
+      await service.submitQuizAttempt(ORG_ID, USER_ID, 'quiz-1', { answers: {} });
+
+      expect(prisma.quizAttempt.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ score: 0 }),
+      });
+    });
+  });
+
+  describe('getQuizForAttempt', () => {
+    const quizWithLesson = {
+      id: 'quiz-1',
+      title: 'Quiz 1',
+      lesson: { subUnit: { unit: { module: { segment: { course_id: 'course-1' } } } } },
+      questions: [
+        {
+          id: 'question-1',
+          prompt: 'Pergunta?',
+          order: 0,
+          options: [
+            { id: 'option-1', text: 'A', is_correct: true },
+            { id: 'option-2', text: 'B', is_correct: false },
+          ],
+        },
+      ],
+    };
+
+    beforeEach(() => {
+      prisma.student.findFirst.mockResolvedValue({ id: 'student-1' });
+      prisma.quiz.findFirst.mockResolvedValue(quizWithLesson);
+    });
+
+    it('rejects a student not enrolled in the quiz\'s course (IDOR)', async () => {
+      prisma.enrollment.findFirst.mockResolvedValue(null);
+
+      await expect(service.getQuizForAttempt(ORG_ID, USER_ID, 'quiz-1')).rejects.toThrow(
+        ForbiddenException,
+      );
+    });
+
+    it('never leaks is_correct to the student taking the quiz', async () => {
+      prisma.enrollment.findFirst.mockResolvedValue({ id: 'enrollment-1' });
+
+      const result = await service.getQuizForAttempt(ORG_ID, USER_ID, 'quiz-1');
+
+      expect(JSON.stringify(result)).not.toContain('is_correct');
+      expect(result.questions[0].options).toEqual([
+        { id: 'option-1', text: 'A' },
+        { id: 'option-2', text: 'B' },
       ]);
     });
   });
