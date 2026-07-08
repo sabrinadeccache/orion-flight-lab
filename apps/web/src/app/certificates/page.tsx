@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { apiFetch } from '../../lib/api';
 
 interface Certificate {
@@ -12,14 +13,22 @@ export default async function CertificatesPage(): Promise<React.ReactElement> {
 
   return (
     <main className="mx-auto max-w-6xl p-8">
-      <h1 className="mb-6 text-2xl font-semibold text-slate-900">Certificados</h1>
+      <div className="mb-6 flex items-center justify-between">
+        <h1 className="text-2xl font-semibold text-slate-900">Certificados</h1>
+        <Link
+          href="/certificates/new"
+          className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white"
+        >
+          + Emitir certificado
+        </Link>
+      </div>
       <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
         <table className="min-w-full divide-y divide-slate-200 text-sm">
           <thead>
             <tr className="text-left text-slate-500">
               <th className="px-4 py-2">Número</th>
               <th className="px-4 py-2">Emitido em</th>
-              <th className="px-4 py-2">Arquivo</th>
+              <th className="px-4 py-2"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -34,7 +43,14 @@ export default async function CertificatesPage(): Promise<React.ReactElement> {
               <tr key={certificate.id}>
                 <td className="px-4 py-2">{certificate.certificate_number}</td>
                 <td className="px-4 py-2">{certificate.issued_at}</td>
-                <td className="px-4 py-2">{certificate.file_url ?? '—'}</td>
+                <td className="px-4 py-2 text-right">
+                  <Link
+                    href={`/certificates/${certificate.id}`}
+                    className="text-slate-600 hover:underline"
+                  >
+                    Ver detalhes
+                  </Link>
+                </td>
               </tr>
             ))}
           </tbody>
