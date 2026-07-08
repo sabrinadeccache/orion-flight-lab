@@ -60,6 +60,12 @@ export default async function CoursesPage(): Promise<React.ReactElement> {
                   >
                     Conteúdo
                   </Link>
+                  <Link
+                    href={`/courses/${course.id}/progress`}
+                    className="mr-3 text-slate-600 hover:underline"
+                  >
+                    Progresso
+                  </Link>
                   <Link href={`/courses/${course.id}/edit`} className="text-slate-600 hover:underline">
                     Editar
                   </Link>
