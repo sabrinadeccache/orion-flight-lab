@@ -418,6 +418,53 @@ export class AcademicService {
     });
   }
 
+  async findCertificate(organizationId: string, id: string) {
+    const certificate = await this.prisma.certificate.findFirst({
+      where: { id, organization_id: organizationId, deleted_at: null },
+      include: {
+        student: { select: { id: true, full_name: true } },
+        enrollment: { include: { course: { select: { id: true, name: true, code: true } } } },
+        qualifications: { select: { id: true, qualification_code: true, issued_at: true } },
+      },
+    });
+    if (!certificate) {
+      throw new NotFoundException('Certificate not found');
+    }
+    return certificate;
+  }
+
+  /** Enrollments still eligible for manual/retroactive certificate issuance (no certificate yet). */
+  async findEnrollmentsWithoutCertificate(organizationId: string) {
+    return this.prisma.enrollment.findMany({
+      where: { organization_id: organizationId, deleted_at: null, certificates: { none: {} } },
+      include: {
+        student: { select: { id: true, full_name: true } },
+        course: { select: { id: true, name: true, code: true } },
+      },
+      orderBy: { enrolled_at: 'desc' },
+    });
+  }
+
+  /** Mirrors DocumentsService.getDownloadUrl — buckets are private, so a stored path needs a signed URL. */
+  async getCertificateDownloadUrl(
+    organizationId: string,
+    id: string,
+  ): Promise<{ url: string } | null> {
+    const certificate = await this.prisma.certificate.findFirst({
+      where: { id, organization_id: organizationId, deleted_at: null },
+      select: { file_url: true },
+    });
+    if (!certificate) {
+      throw new NotFoundException('Certificate not found');
+    }
+    if (!certificate.file_url) {
+      return null;
+    }
+
+    const url = await this.storage.createSignedUrl('certificates', certificate.file_url);
+    return url ? { url } : null;
+  }
+
   /** Seção 142.71 — full academic history of a student. */
   async getStudentHistory(organizationId: string, studentId: string) {
     const student = await this.prisma.student.findFirst({

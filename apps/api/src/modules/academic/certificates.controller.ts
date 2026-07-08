@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { SupabaseAuthGuard } from '../auth/guards/supabase-auth.guard';
 import { OrganizationGuard } from '../auth/guards/organization.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -21,5 +21,15 @@ export class CertificatesController {
   @Get()
   findAll(@CurrentUser() user: AuthenticatedUser) {
     return this.academicService.findCertificates(user.organizationId);
+  }
+
+  @Get(':id')
+  findOne(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.academicService.findCertificate(user.organizationId, id);
+  }
+
+  @Get(':id/download')
+  getDownloadUrl(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.academicService.getCertificateDownloadUrl(user.organizationId, id);
   }
 }

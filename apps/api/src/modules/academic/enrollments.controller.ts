@@ -1,4 +1,4 @@
-import { Body, Controller, Post, UseGuards } from '@nestjs/common';
+import { Controller, Get, Body, Post, UseGuards } from '@nestjs/common';
 import { Enrollment } from '@prisma/client';
 import { SupabaseAuthGuard } from '../auth/guards/supabase-auth.guard';
 import { OrganizationGuard } from '../auth/guards/organization.guard';
@@ -20,5 +20,11 @@ export class EnrollmentsController {
     @Body() dto: CreateEnrollmentDto,
   ): Promise<Enrollment> {
     return this.academicService.createEnrollment(user.organizationId, dto);
+  }
+
+  /** Eligible enrollments for manual/retroactive certificate issuance (no certificate yet). */
+  @Get()
+  findAll(@CurrentUser() user: AuthenticatedUser) {
+    return this.academicService.findEnrollmentsWithoutCertificate(user.organizationId);
   }
 }
