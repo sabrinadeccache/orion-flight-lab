@@ -86,6 +86,20 @@ enum ClientType {
   PJ
 }
 
+/// LMS: how a Material's content is delivered to the student.
+enum MaterialType {
+  ARQUIVO
+  VIDEO_EXTERNO
+  TEXTO
+}
+
+/// LMS: a student's progress through a single Lesson.
+enum LessonProgressStatus {
+  NAO_INICIADO
+  EM_ANDAMENTO
+  CONCLUIDO
+}
+
 // ---------------------------------------------------------------------------
 // Auth / IAM
 // ---------------------------------------------------------------------------
@@ -210,6 +224,11 @@ model Organization {
   payment               Payment[]
   delinquency           Delinquency[]
   instructorLessonLogs  InstructorLessonLog[]
+  lessonProgress        LessonProgress[]
+  quiz                  Quiz[]
+  quizQuestion          QuizQuestion[]
+  quizOption            QuizOption[]
+  quizAttempt           QuizAttempt[]
 
   @@map("organizations")
 }
@@ -577,12 +596,17 @@ model Lesson {
 
   materials   Material[]
   attendances Attendance[]
+  progresses  LessonProgress[]
+  quiz        Quiz?
 
   @@index([organization_id])
   @@index([sub_unit_id])
   @@map("lessons")
 }
 
+/// type ARQUIVO uses file_url (signed URL via StorageService, bucket
+/// lms-materials); VIDEO_EXTERNO uses file_url as an embed/link URL;
+/// TEXTO uses content_html instead of file_url.
 model Material {
   id              String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organization_id String       @db.Uuid
@@ -590,8 +614,9 @@ model Material {
   lesson_id       String       @db.Uuid
   lesson          Lesson       @relation(fields: [lesson_id], references: [id])
   name            String
+  type            MaterialType @default(ARQUIVO)
   file_url        String?
-  type            String?
+  content_html    String?
   created_at      DateTime     @default(now())
   updated_at      DateTime     @updatedAt
   deleted_at      DateTime?
@@ -631,6 +656,7 @@ model Student {
   full_name              String
   cpf                    String       @unique
   anac_record_number     String?      @unique
+  email                  String?      @unique
   birth_date             DateTime?
   fraud_quarantine_until DateTime?
   active                 Boolean      @default(true)
@@ -638,9 +664,11 @@ model Student {
   updated_at             DateTime     @updatedAt
   deleted_at             DateTime?
 
-  enrollments    Enrollment[]
-  certificates   Certificate[]
-  qualifications Qualification[]
+  enrollments      Enrollment[]
+  certificates     Certificate[]
+  qualifications   Qualification[]
+  lessonProgresses LessonProgress[]
+  quizAttempts     QuizAttempt[]
 
   @@index([organization_id])
   @@map("students")
@@ -662,11 +690,12 @@ model Enrollment {
   updated_at      DateTime         @updatedAt
   deleted_at      DateTime?
 
-  attendances    Attendance[]
-  theoryExams    TheoryExam[]
-  practicalExams PracticalExam[]
-  grades         Grade[]
-  certificates   Certificate[]
+  attendances      Attendance[]
+  theoryExams      TheoryExam[]
+  practicalExams   PracticalExam[]
+  grades           Grade[]
+  certificates     Certificate[]
+  lessonProgresses LessonProgress[]
 
   @@index([organization_id])
   @@index([student_id])
@@ -823,6 +852,117 @@ model QualificationExpiry {
   @@index([organization_id])
   @@index([qualification_id])
   @@map("qualification_expiries")
+}
+
+// ---------------------------------------------------------------------------
+// LMS — student progress & formative quizzes
+// ---------------------------------------------------------------------------
+
+/// A student's progress through a single Lesson, within one Enrollment.
+/// Marking CONCLUIDO also creates/updates the corresponding Attendance row
+/// (see LmsService.markLessonProgress) so RN-05 certificate auto-issuance
+/// keeps working unmodified — this is not a parallel completion system.
+model LessonProgress {
+  id              String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id String               @db.Uuid
+  organization    Organization         @relation(fields: [organization_id], references: [id])
+  student_id      String               @db.Uuid
+  student         Student              @relation(fields: [student_id], references: [id])
+  enrollment_id   String               @db.Uuid
+  enrollment      Enrollment           @relation(fields: [enrollment_id], references: [id])
+  lesson_id       String               @db.Uuid
+  lesson          Lesson               @relation(fields: [lesson_id], references: [id])
+  status          LessonProgressStatus @default(NAO_INICIADO)
+  started_at      DateTime?
+  completed_at    DateTime?
+  created_at      DateTime             @default(now())
+  updated_at      DateTime             @updatedAt
+  deleted_at      DateTime?
+
+  @@unique([student_id, lesson_id])
+  @@index([organization_id])
+  @@index([enrollment_id])
+  @@index([lesson_id])
+  @@map("lesson_progresses")
+}
+
+/// Formative quiz attached to a Lesson. Does not replace TheoryExam/
+/// PracticalExam (the official ANAC exam record) — purely for the
+/// student's self-check while consuming the lesson.
+model Quiz {
+  id              String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id String       @db.Uuid
+  organization    Organization @relation(fields: [organization_id], references: [id])
+  lesson_id       String       @unique @db.Uuid
+  lesson          Lesson       @relation(fields: [lesson_id], references: [id])
+  title           String
+  created_at      DateTime     @default(now())
+  updated_at      DateTime     @updatedAt
+  deleted_at      DateTime?
+
+  questions QuizQuestion[]
+  attempts  QuizAttempt[]
+
+  @@index([organization_id])
+  @@map("quizzes")
+}
+
+model QuizQuestion {
+  id              String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id String       @db.Uuid
+  organization    Organization @relation(fields: [organization_id], references: [id])
+  quiz_id         String       @db.Uuid
+  quiz            Quiz         @relation(fields: [quiz_id], references: [id])
+  prompt          String
+  order           Int          @default(0)
+  created_at      DateTime     @default(now())
+  updated_at      DateTime     @updatedAt
+  deleted_at      DateTime?
+
+  options QuizOption[]
+
+  @@index([organization_id])
+  @@index([quiz_id])
+  @@map("quiz_questions")
+}
+
+model QuizOption {
+  id              String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id String       @db.Uuid
+  organization    Organization @relation(fields: [organization_id], references: [id])
+  question_id     String       @db.Uuid
+  question        QuizQuestion @relation(fields: [question_id], references: [id])
+  text            String
+  is_correct      Boolean      @default(false)
+  created_at      DateTime     @default(now())
+  updated_at      DateTime     @updatedAt
+  deleted_at      DateTime?
+
+  @@index([organization_id])
+  @@index([question_id])
+  @@map("quiz_options")
+}
+
+/// answers stores { questionId: optionId } as submitted; score is the
+/// percentage of questions answered correctly, computed server-side.
+model QuizAttempt {
+  id              String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id String       @db.Uuid
+  organization    Organization @relation(fields: [organization_id], references: [id])
+  quiz_id         String       @db.Uuid
+  quiz            Quiz         @relation(fields: [quiz_id], references: [id])
+  student_id      String       @db.Uuid
+  student         Student      @relation(fields: [student_id], references: [id])
+  score           Decimal      @db.Decimal(5, 2)
+  answers         Json
+  submitted_at    DateTime     @default(now())
+  created_at      DateTime     @default(now())
+  updated_at      DateTime     @updatedAt
+
+  @@index([organization_id])
+  @@index([quiz_id])
+  @@index([student_id])
+  @@map("quiz_attempts")
 }
 
 // ---------------------------------------------------------------------------
