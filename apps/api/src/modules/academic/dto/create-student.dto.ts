@@ -1,4 +1,4 @@
-import { IsBoolean, IsDateString, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsDateString, IsEmail, IsOptional, IsString } from 'class-validator';
 
 /// Seção 142.71 — abertura de ficha ANAC do aluno.
 export class CreateStudentDto {
@@ -11,6 +11,11 @@ export class CreateStudentDto {
   @IsOptional()
   @IsString()
   anac_record_number?: string;
+
+  /** Required later to invite the student to the LMS portal (see /students/:id/invite). */
+  @IsOptional()
+  @IsEmail()
+  email?: string;
 
   @IsOptional()
   @IsDateString()

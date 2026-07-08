@@ -13,9 +13,10 @@ import {
   Student,
   TheoryExam,
 } from '@prisma/client';
-import { ExamType } from '@orion/shared';
+import { ExamType, Role } from '@orion/shared';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { StorageService } from '../../common/storage/storage.service';
+import { SupabaseAdminService } from '../../common/supabase-admin/supabase-admin.service';
 import { CreateStudentDto } from './dto/create-student.dto';
 import { UpdateStudentDto } from './dto/update-student.dto';
 import { CreateEnrollmentDto } from './dto/create-enrollment.dto';
@@ -39,6 +40,7 @@ export class AcademicService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
+    private readonly supabaseAdmin: SupabaseAdminService,
   ) {}
 
   async createStudent(organizationId: string, dto: CreateStudentDto): Promise<Student> {
@@ -48,6 +50,7 @@ export class AcademicService {
         full_name: dto.full_name,
         cpf: dto.cpf,
         anac_record_number: dto.anac_record_number,
+        email: dto.email,
         birth_date: dto.birth_date ? new Date(dto.birth_date) : undefined,
         active: dto.active,
       },
@@ -83,9 +86,42 @@ export class AcademicService {
         full_name: dto.full_name,
         cpf: dto.cpf,
         anac_record_number: dto.anac_record_number,
+        email: dto.email,
         birth_date: dto.birth_date ? new Date(dto.birth_date) : undefined,
         active: dto.active,
       },
+    });
+  }
+
+  /**
+   * Provisions a real Supabase Auth login for a Student (LMS portal access).
+   * Idempotency guard: a Student can only be invited once (user_profile_id
+   * is set on success, and is otherwise null).
+   */
+  async inviteStudentToPortal(organizationId: string, id: string): Promise<Student> {
+    const student = await this.findStudent(organizationId, id);
+    if (student.user_profile_id) {
+      throw new BadRequestException('Student has already been invited to the portal');
+    }
+    if (!student.email) {
+      throw new BadRequestException('Student must have an email before being invited');
+    }
+
+    const userId = await this.supabaseAdmin.inviteStudent(student.email, organizationId);
+
+    await this.prisma.userProfile.create({
+      data: {
+        id: userId,
+        organization_id: organizationId,
+        email: student.email,
+        full_name: student.full_name,
+        roles: [Role.ALUNO],
+      },
+    });
+
+    return this.prisma.student.update({
+      where: { id },
+      data: { user_profile_id: userId },
     });
   }
 

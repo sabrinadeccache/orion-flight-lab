@@ -1,7 +1,10 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { Student } from '@prisma/client';
+import { Role } from '@orion/shared';
 import { SupabaseAuthGuard } from '../auth/guards/supabase-auth.guard';
 import { OrganizationGuard } from '../auth/guards/organization.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuditLog } from '../auth/decorators/audit-log.decorator';
 import { AuthenticatedUser } from '../auth/types/authenticated-user';
@@ -52,5 +55,13 @@ export class StudentsController {
   @AuditLog({ action: 'delete', entity: 'Student' })
   remove(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string): Promise<void> {
     return this.academicService.deleteStudent(user.organizationId, id);
+  }
+
+  @Post('students/:id/invite')
+  @UseGuards(RolesGuard)
+  @Roles(Role.ADMIN, Role.SECRETARIA_ACADEMICA, Role.COORDENADOR_ACADEMICO)
+  @AuditLog({ action: 'invite', entity: 'Student' })
+  invite(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string): Promise<Student> {
+    return this.academicService.inviteStudentToPortal(user.organizationId, id);
   }
 }

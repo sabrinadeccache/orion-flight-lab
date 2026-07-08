@@ -5,6 +5,7 @@ import { APP_INTERCEPTOR } from '@nestjs/core';
 import { AppController } from './app.controller';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { StorageModule } from './common/storage/storage.module';
+import { SupabaseAdminModule } from './common/supabase-admin/supabase-admin.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { AuditLogInterceptor } from './modules/auth/interceptors/audit-log.interceptor';
 import { OrganizationModule } from './modules/organization/organization.module';
@@ -27,6 +28,7 @@ import { ReportsModule } from './modules/reports/reports.module';
     ScheduleModule.forRoot(),
     PrismaModule,
     StorageModule,
+    SupabaseAdminModule,
     AuthModule,
     OrganizationModule,
     PersonnelModule,

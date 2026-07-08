@@ -7,7 +7,8 @@ export type StorageBucket =
   | 'certificates'
   | 'contracts'
   | 'student-docs'
-  | 'instructor-docs';
+  | 'instructor-docs'
+  | 'lms-materials';
 
 /**
  * Thin wrapper around the Supabase Storage admin client (service role key).

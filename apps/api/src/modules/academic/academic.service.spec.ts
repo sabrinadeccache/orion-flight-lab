@@ -5,13 +5,15 @@ import { ExamType } from '@orion/shared';
 import { AcademicService } from './academic.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { StorageService } from '../../common/storage/storage.service';
+import { SupabaseAdminService } from '../../common/supabase-admin/supabase-admin.service';
 
 const ORG_ID = 'org-1';
 
 describe('AcademicService', () => {
   let service: AcademicService;
   let prisma: {
-    student: { findFirst: jest.Mock };
+    student: { findFirst: jest.Mock; update: jest.Mock };
+    userProfile: { create: jest.Mock };
     course: { findFirst: jest.Mock };
     enrollment: {
       findFirst: jest.Mock;
@@ -28,10 +30,12 @@ describe('AcademicService', () => {
     qualification: { updateMany: jest.Mock; create: jest.Mock };
   };
   let storage: { upload: jest.Mock };
+  let supabaseAdmin: { inviteStudent: jest.Mock };
 
   beforeEach(async () => {
     prisma = {
-      student: { findFirst: jest.fn() },
+      student: { findFirst: jest.fn(), update: jest.fn() },
+      userProfile: { create: jest.fn() },
       course: { findFirst: jest.fn() },
       enrollment: {
         findFirst: jest.fn(),
@@ -48,6 +52,7 @@ describe('AcademicService', () => {
       qualification: { updateMany: jest.fn(), create: jest.fn() },
     };
     storage = { upload: jest.fn() };
+    supabaseAdmin = { inviteStudent: jest.fn() };
     prisma.certificate.findFirst.mockResolvedValue(null);
 
     const module = await Test.createTestingModule({
@@ -55,6 +60,7 @@ describe('AcademicService', () => {
         AcademicService,
         { provide: PrismaService, useValue: prisma },
         { provide: StorageService, useValue: storage },
+        { provide: SupabaseAdminService, useValue: supabaseAdmin },
       ],
     }).compile();
 
@@ -554,6 +560,68 @@ describe('AcademicService', () => {
       expect(prisma.enrollment.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({ data: { status: EnrollmentStatus.EXPIRADA } }),
       );
+    });
+  });
+
+  describe('inviteStudentToPortal: LMS portal login provisioning', () => {
+    it('blocks inviting a student that has no email set', async () => {
+      prisma.student.findFirst.mockResolvedValue({ id: 'student-1', email: null, user_profile_id: null });
+
+      await expect(service.inviteStudentToPortal(ORG_ID, 'student-1')).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(supabaseAdmin.inviteStudent).not.toHaveBeenCalled();
+    });
+
+    it('blocks inviting a student that already has a linked user profile', async () => {
+      prisma.student.findFirst.mockResolvedValue({
+        id: 'student-1',
+        email: 'aluno@example.com',
+        user_profile_id: 'user-1',
+      });
+
+      await expect(service.inviteStudentToPortal(ORG_ID, 'student-1')).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(supabaseAdmin.inviteStudent).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException for a student outside the organization', async () => {
+      prisma.student.findFirst.mockResolvedValue(null);
+
+      await expect(service.inviteStudentToPortal(ORG_ID, 'student-1')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('creates the auth user, a UserProfile, and links it to the student', async () => {
+      prisma.student.findFirst.mockResolvedValue({
+        id: 'student-1',
+        email: 'aluno@example.com',
+        full_name: 'Aluno Teste',
+        user_profile_id: null,
+      });
+      supabaseAdmin.inviteStudent.mockResolvedValue('user-1');
+      prisma.userProfile.create.mockResolvedValue({ id: 'user-1' });
+      prisma.student.update.mockResolvedValue({ id: 'student-1', user_profile_id: 'user-1' });
+
+      const result = await service.inviteStudentToPortal(ORG_ID, 'student-1');
+
+      expect(supabaseAdmin.inviteStudent).toHaveBeenCalledWith('aluno@example.com', ORG_ID);
+      expect(prisma.userProfile.create).toHaveBeenCalledWith({
+        data: {
+          id: 'user-1',
+          organization_id: ORG_ID,
+          email: 'aluno@example.com',
+          full_name: 'Aluno Teste',
+          roles: ['ALUNO'],
+        },
+      });
+      expect(prisma.student.update).toHaveBeenCalledWith({
+        where: { id: 'student-1' },
+        data: { user_profile_id: 'user-1' },
+      });
+      expect(result).toEqual({ id: 'student-1', user_profile_id: 'user-1' });
     });
   });
 });
