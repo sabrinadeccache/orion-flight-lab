@@ -134,15 +134,27 @@ describe('TrainingService — content hierarchy (Segment -> Material)', () => {
       expect(prisma.material.create).not.toHaveBeenCalled();
     });
 
-    it('rejects ARQUIVO without a file_url', async () => {
+    it('rejects VIDEO_EXTERNO without a file_url', async () => {
       await expect(
         service.createMaterial(ORG_ID, {
           lesson_id: 'lesson-1',
-          name: 'Slide 1',
-          type: MaterialType.ARQUIVO,
+          name: 'Vídeo 1',
+          type: MaterialType.VIDEO_EXTERNO,
         }),
       ).rejects.toThrow(BadRequestException);
       expect(prisma.material.create).not.toHaveBeenCalled();
+    });
+
+    it('allows creating ARQUIVO without a file_url (uploaded separately afterwards)', async () => {
+      prisma.material.create.mockResolvedValue({ id: 'material-3' });
+
+      const result = await service.createMaterial(ORG_ID, {
+        lesson_id: 'lesson-1',
+        name: 'Slide 1',
+        type: MaterialType.ARQUIVO,
+      });
+
+      expect(result).toEqual({ id: 'material-3' });
     });
 
     it('rejects TEXTO without content_html', async () => {

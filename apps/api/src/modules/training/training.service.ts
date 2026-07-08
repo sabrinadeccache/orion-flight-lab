@@ -398,13 +398,20 @@ export class TrainingService {
     return this.storage.createSignedUrl('lms-materials', material.file_url);
   }
 
-  /** ARQUIVO/VIDEO_EXTERNO need a URL; TEXTO needs inline HTML content. */
+  /**
+   * VIDEO_EXTERNO needs a URL upfront; TEXTO needs inline HTML content.
+   * ARQUIVO is deliberately exempt — its file_url is filled in afterwards by
+   * uploadMaterialFile() (a separate multipart upload step), so a freshly
+   * created ARQUIVO material has no file yet, and that's expected.
+   */
   private assertMaterialContent(type: MaterialType, fileUrl?: string, contentHtml?: string): void {
     if (type === MaterialType.TEXTO) {
       if (!contentHtml) throw new BadRequestException('content_html is required when type is TEXTO');
       return;
     }
-    if (!fileUrl) throw new BadRequestException('file_url is required when type is ARQUIVO or VIDEO_EXTERNO');
+    if (type === MaterialType.VIDEO_EXTERNO && !fileUrl) {
+      throw new BadRequestException('file_url is required when type is VIDEO_EXTERNO');
+    }
   }
 
   /** Prevents linking a record to another organization's parent entity. */
