@@ -14,6 +14,7 @@ const ROUTE_ROLES: Record<string, Role[]> = {
   '/financial': [Role.ADMIN, Role.FINANCEIRO],
   '/contracts': [Role.ADMIN, Role.FINANCEIRO, Role.COMERCIAL],
   '/clients': [Role.ADMIN, Role.COMERCIAL],
+  '/crm': [Role.ADMIN, Role.COMERCIAL],
   '/sgq': [Role.ADMIN, Role.GERENTE_QUALIDADE],
   '/sgso': [Role.ADMIN, Role.GERENTE_SEGURANCA],
 };
