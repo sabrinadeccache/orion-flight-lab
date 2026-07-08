@@ -12,6 +12,7 @@ import { OrganizationModule } from './modules/organization/organization.module';
 import { PersonnelModule } from './modules/personnel/personnel.module';
 import { TrainingModule } from './modules/training/training.module';
 import { AcademicModule } from './modules/academic/academic.module';
+import { LmsModule } from './modules/lms/lms.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { SgqModule } from './modules/sgq/sgq.module';
 import { SgsoModule } from './modules/sgso/sgso.module';
@@ -34,6 +35,7 @@ import { ReportsModule } from './modules/reports/reports.module';
     PersonnelModule,
     TrainingModule,
     AcademicModule,
+    LmsModule,
     DocumentsModule,
     SgqModule,
     SgsoModule,
