@@ -223,6 +223,53 @@ export class LmsService {
     return progress;
   }
 
+  /** Single-lesson student view — materials, quiz presence and this student's progress, in one call. */
+  async getLessonForStudent(organizationId: string, userProfileId: string, lessonId: string) {
+    const student = await this.resolveStudent(organizationId, userProfileId);
+
+    const lesson = await this.prisma.lesson.findFirst({
+      where: { id: lessonId, organization_id: organizationId, deleted_at: null },
+      include: {
+        materials: { where: { deleted_at: null } },
+        quiz: { select: { id: true } },
+        subUnit: { include: { unit: { include: { module: { include: { segment: true } } } } } },
+      },
+    });
+    if (!lesson) {
+      throw new NotFoundException('Lesson not found');
+    }
+
+    const courseId = lesson.subUnit.unit.module.segment.course_id;
+    const enrollment = await this.prisma.enrollment.findFirst({
+      where: { student_id: student.id, course_id: courseId, organization_id: organizationId, deleted_at: null },
+      select: { id: true },
+    });
+    if (!enrollment) {
+      throw new ForbiddenException('Student is not enrolled in this lesson\'s course');
+    }
+
+    const progress = await this.prisma.lessonProgress.findUnique({
+      where: { student_id_lesson_id: { student_id: student.id, lesson_id: lessonId } },
+    });
+
+    return {
+      id: lesson.id,
+      name: lesson.name,
+      duration_hours: lesson.duration_hours,
+      enrollmentId: enrollment.id,
+      hasQuiz: lesson.quiz !== null,
+      quizId: lesson.quiz?.id ?? null,
+      progressStatus: progress?.status ?? LessonProgressStatus.NAO_INICIADO,
+      materials: lesson.materials.map((material) => ({
+        id: material.id,
+        name: material.name,
+        type: material.type,
+        content_html: material.content_html,
+        file_url: material.type === 'VIDEO_EXTERNO' ? material.file_url : null,
+      })),
+    };
+  }
+
   /** Student-facing signed URL for a Material file, gated by enrollment (IDOR). */
   async getMaterialDownloadUrl(
     organizationId: string,

@@ -41,6 +41,13 @@ export class LmsController {
     return this.lmsService.getEnrollmentContent(user.organizationId, user.id, id);
   }
 
+  @Get('lessons/:id/view')
+  @UseGuards(RolesGuard)
+  @Roles(Role.ALUNO)
+  getLessonForStudent(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.lmsService.getLessonForStudent(user.organizationId, user.id, id);
+  }
+
   @Post('lessons/:id/progress')
   @UseGuards(RolesGuard)
   @Roles(Role.ALUNO)

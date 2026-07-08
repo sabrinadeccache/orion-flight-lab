@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { useSupabase } from '../../../../components/providers/supabase-provider';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
@@ -67,14 +67,9 @@ export function ContentManager({ courseId }: { courseId: string }): React.ReactE
     return body.data as T;
   }
 
-  async function ensureSegments(): Promise<void> {
-    if (segments !== null) return;
-    setSegments((await loadJson<Named[]>(`/training/courses/${courseId}/segments`)) ?? []);
-  }
-
-  if (segments === null) {
-    void ensureSegments();
-  }
+  useEffect(() => {
+    loadJson<Named[]>(`/training/courses/${courseId}/segments`).then((data) => setSegments(data ?? []));
+  }, [courseId]);
 
   async function handleCreate(
     path: string,

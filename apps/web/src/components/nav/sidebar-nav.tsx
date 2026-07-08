@@ -11,6 +11,7 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
+  { href: '/portal', label: 'Meus Cursos', roles: ['ALUNO'] },
   { href: '/dashboard', label: 'Dashboard' },
   { href: '/students', label: 'Alunos' },
   { href: '/personnel', label: 'Pessoal' },
@@ -32,7 +33,14 @@ const QUICK_ACTIONS: NavItem[] = [
   { href: '/exams/new', label: '+ Novo exame' },
 ];
 
+/** A pure-ALUNO session only ever sees the LMS portal link — the rest of
+ * this menu is the staff back office (mirrors the /portal confinement rule
+ * in middleware.ts). */
 function isVisible(item: NavItem, roles: string[]): boolean {
+  const isPureStudent = roles.length > 0 && roles.every((role) => role === 'ALUNO');
+  if (isPureStudent) {
+    return item.roles?.includes('ALUNO') ?? false;
+  }
   return !item.roles || item.roles.some((role) => roles.includes(role));
 }
 
@@ -74,7 +82,7 @@ export function SidebarNav({ roles }: { roles: string[] }): React.ReactElement {
       </ul>
 
       <div className="mt-6 space-y-1 border-t border-slate-200 pt-4">
-        {QUICK_ACTIONS.map((item) => (
+        {(roles.length > 0 && roles.every((role) => role === 'ALUNO') ? [] : QUICK_ACTIONS).map((item) => (
           <Link
             key={item.href}
             href={item.href}

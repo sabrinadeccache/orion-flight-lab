@@ -17,10 +17,18 @@ const ROUTE_ROLES: Record<string, Role[]> = {
   '/crm': [Role.ADMIN, Role.COMERCIAL],
   '/sgq': [Role.ADMIN, Role.GERENTE_QUALIDADE],
   '/sgso': [Role.ADMIN, Role.GERENTE_SEGURANCA],
+  '/portal': [Role.ALUNO],
 };
+
+/** Routes a pure-ALUNO session (the LMS student portal) may reach. */
+const STUDENT_ALLOWED_PREFIXES = ['/portal'];
 
 function isPublicRoute(pathname: string): boolean {
   return PUBLIC_ROUTES.some((route) => pathname.startsWith(route));
+}
+
+function isPureStudent(roles: string[]): boolean {
+  return roles.length > 0 && roles.every((role) => role === Role.ALUNO);
 }
 
 function requiredRolesFor(pathname: string): Role[] | null {
@@ -41,6 +49,16 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('redirectTo', pathname);
     return NextResponse.redirect(loginUrl);
+  }
+
+  // The LMS student portal is confined to its own routes — a student has no
+  // business browsing the staff back office (which is otherwise open by
+  // default to any authenticated user, see ROUTE_ROLES comment above).
+  if (
+    isPureStudent(roles) &&
+    !STUDENT_ALLOWED_PREFIXES.some((prefix) => pathname.startsWith(prefix))
+  ) {
+    return NextResponse.redirect(new URL('/portal', request.url));
   }
 
   const requiredRoles = requiredRolesFor(pathname);

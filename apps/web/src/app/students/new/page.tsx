@@ -12,6 +12,7 @@ export default function NewStudentPage(): React.ReactElement {
   const router = useRouter();
   const [fullName, setFullName] = useState('');
   const [cpf, setCpf] = useState('');
+  const [email, setEmail] = useState('');
   const [anacRecordNumber, setAnacRecordNumber] = useState('');
   const [birthDate, setBirthDate] = useState('');
   const [active, setActive] = useState(true);
@@ -32,6 +33,7 @@ export default function NewStudentPage(): React.ReactElement {
       body: JSON.stringify({
         full_name: fullName,
         cpf,
+        email: email || undefined,
         anac_record_number: anacRecordNumber || undefined,
         birth_date: birthDate || undefined,
         active,
@@ -72,6 +74,17 @@ export default function NewStudentPage(): React.ReactElement {
             required
             value={cpf}
             onChange={(event) => setCpf(event.target.value)}
+            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-sm font-medium text-slate-700">
+            E-mail (opcional, necessário para convidar ao portal do aluno)
+          </label>
+          <input
+            type="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
           />
         </div>

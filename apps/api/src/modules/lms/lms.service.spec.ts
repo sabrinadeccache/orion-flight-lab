@@ -179,6 +179,44 @@ describe('LmsService', () => {
     });
   });
 
+  describe('getLessonForStudent', () => {
+    const lessonWithChain = {
+      id: 'lesson-1',
+      name: 'Lição 1',
+      duration_hours: '1',
+      materials: [
+        { id: 'material-1', name: 'Slide', type: 'ARQUIVO', content_html: null, file_url: 'org-1/material-1' },
+      ],
+      quiz: { id: 'quiz-1' },
+      subUnit: { unit: { module: { segment: { course_id: 'course-1' } } } },
+    };
+
+    beforeEach(() => {
+      prisma.student.findFirst.mockResolvedValue({ id: 'student-1' });
+      prisma.lesson.findFirst.mockResolvedValue(lessonWithChain);
+    });
+
+    it('rejects a student not enrolled in the course (IDOR)', async () => {
+      prisma.enrollment.findFirst.mockResolvedValue(null);
+
+      await expect(service.getLessonForStudent(ORG_ID, USER_ID, 'lesson-1')).rejects.toThrow(
+        ForbiddenException,
+      );
+    });
+
+    it('never leaks the raw storage path of an ARQUIVO material', async () => {
+      prisma.enrollment.findFirst.mockResolvedValue({ id: 'enrollment-1' });
+      prisma.lessonProgress.findUnique.mockResolvedValue(null);
+
+      const result = await service.getLessonForStudent(ORG_ID, USER_ID, 'lesson-1');
+
+      expect(result.materials[0].file_url).toBeNull();
+      expect(result.hasQuiz).toBe(true);
+      expect(result.progressStatus).toBe(LessonProgressStatus.NAO_INICIADO);
+      expect(result.enrollmentId).toBe('enrollment-1');
+    });
+  });
+
   describe('getCourseProgress', () => {
     it('throws NotFoundException for a course outside the organization', async () => {
       prisma.course.findFirst.mockResolvedValue(null);

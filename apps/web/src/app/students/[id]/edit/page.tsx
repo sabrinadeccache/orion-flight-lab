@@ -11,8 +11,10 @@ interface Student {
   id: string;
   full_name: string;
   cpf: string;
+  email: string | null;
   anac_record_number: string | null;
   active: boolean;
+  user_profile_id: string | null;
 }
 
 export default function EditStudentPage({
@@ -25,10 +27,13 @@ export default function EditStudentPage({
   const [student, setStudent] = useState<Student | null>(null);
   const [fullName, setFullName] = useState('');
   const [cpf, setCpf] = useState('');
+  const [email, setEmail] = useState('');
   const [anacRecordNumber, setAnacRecordNumber] = useState('');
   const [active, setActive] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [inviting, setInviting] = useState(false);
+  const [inviteMessage, setInviteMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!session) return;
@@ -41,6 +46,7 @@ export default function EditStudentPage({
         setStudent(body.data);
         setFullName(body.data.full_name);
         setCpf(body.data.cpf);
+        setEmail(body.data.email ?? '');
         setAnacRecordNumber(body.data.anac_record_number ?? '');
         setActive(body.data.active);
       });
@@ -60,6 +66,7 @@ export default function EditStudentPage({
       body: JSON.stringify({
         full_name: fullName,
         cpf,
+        email: email || undefined,
         anac_record_number: anacRecordNumber || undefined,
         active,
       }),
@@ -97,6 +104,27 @@ export default function EditStudentPage({
     router.refresh();
   }
 
+  async function handleInvite(): Promise<void> {
+    setInviting(true);
+    setInviteMessage(null);
+
+    const response = await fetch(`${API_URL}/students/${params.id}/invite`, {
+      method: 'POST',
+      headers: session ? { Authorization: `Bearer ${session.access_token}` } : {},
+    });
+
+    setInviting(false);
+
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      setInviteMessage(body?.errors?.[0]?.message ?? 'Não foi possível convidar o aluno.');
+      return;
+    }
+
+    setInviteMessage('Convite enviado! O aluno vai receber um e-mail para acessar o portal.');
+    router.refresh();
+  }
+
   if (!student) {
     return (
       <main className="mx-auto max-w-lg p-8">
@@ -127,6 +155,17 @@ export default function EditStudentPage({
             required
             value={cpf}
             onChange={(event) => setCpf(event.target.value)}
+            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-sm font-medium text-slate-700">
+            E-mail (opcional, necessário para convidar ao portal do aluno)
+          </label>
+          <input
+            type="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
           />
         </div>
@@ -167,6 +206,30 @@ export default function EditStudentPage({
           </button>
         </div>
       </form>
+
+      <div className="mt-8 border-t border-slate-200 pt-6">
+        <h2 className="mb-2 text-sm font-semibold text-slate-900">Portal do aluno (LMS)</h2>
+        {student.user_profile_id ? (
+          <p className="text-sm text-emerald-600">Este aluno já tem acesso ao portal.</p>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={handleInvite}
+              disabled={inviting || !student.email}
+              className="rounded-md border px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              {inviting ? 'Enviando convite...' : 'Convidar para o portal'}
+            </button>
+            {!student.email && (
+              <p className="mt-1 text-xs text-slate-500">
+                Cadastre um e-mail acima e salve antes de convidar.
+              </p>
+            )}
+            {inviteMessage && <p className="mt-2 text-sm text-slate-700">{inviteMessage}</p>}
+          </>
+        )}
+      </div>
     </main>
   );
 }
