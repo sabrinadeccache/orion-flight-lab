@@ -9,6 +9,8 @@ import { CreateAuditProgramDto } from './dto/create-audit-program.dto';
 import { CreateAuditDto } from './dto/create-audit.dto';
 import { CreateNonConformityDto } from './dto/create-non-conformity.dto';
 import { CreateCorrectiveActionDto } from './dto/create-corrective-action.dto';
+import { UpdateAuditProgramDto } from './dto/update-audit-program.dto';
+import { UpdateAuditDto } from './dto/update-audit.dto';
 
 @Controller('sgq')
 @UseGuards(SupabaseAuthGuard, OrganizationGuard)
@@ -26,6 +28,21 @@ export class SgqController {
     return this.sgqService.findAuditPrograms(user.organizationId);
   }
 
+  @Get('audit-programs/:id')
+  findAuditProgram(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.sgqService.findAuditProgram(user.organizationId, id);
+  }
+
+  @Patch('audit-programs/:id')
+  @AuditLog({ action: 'update', entity: 'AuditProgram' })
+  updateAuditProgram(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateAuditProgramDto,
+  ) {
+    return this.sgqService.updateAuditProgram(user.organizationId, id, dto);
+  }
+
   @Post('audits')
   @AuditLog({ action: 'create', entity: 'Audit' })
   createAudit(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateAuditDto) {
@@ -37,6 +54,21 @@ export class SgqController {
     return this.sgqService.findAudits(user.organizationId);
   }
 
+  @Get('audits/:id')
+  findAudit(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.sgqService.findAudit(user.organizationId, id);
+  }
+
+  @Patch('audits/:id')
+  @AuditLog({ action: 'update', entity: 'Audit' })
+  updateAudit(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateAuditDto,
+  ) {
+    return this.sgqService.updateAudit(user.organizationId, id, dto);
+  }
+
   @Post('non-conformities')
   @AuditLog({ action: 'create', entity: 'NonConformity' })
   createNonConformity(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateNonConformityDto) {
@@ -46,6 +78,11 @@ export class SgqController {
   @Get('non-conformities')
   findNonConformities(@CurrentUser() user: AuthenticatedUser) {
     return this.sgqService.findNonConformities(user.organizationId);
+  }
+
+  @Get('non-conformities/:id')
+  findNonConformity(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.sgqService.findNonConformity(user.organizationId, id);
   }
 
   @Patch('non-conformities/:id/close')

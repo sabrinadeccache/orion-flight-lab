@@ -5,6 +5,8 @@ import { CreateAuditProgramDto } from './dto/create-audit-program.dto';
 import { CreateAuditDto } from './dto/create-audit.dto';
 import { CreateNonConformityDto } from './dto/create-non-conformity.dto';
 import { CreateCorrectiveActionDto } from './dto/create-corrective-action.dto';
+import { UpdateAuditProgramDto } from './dto/update-audit-program.dto';
+import { UpdateAuditDto } from './dto/update-audit.dto';
 
 @Injectable()
 export class SgqService {
@@ -18,6 +20,33 @@ export class SgqService {
     return this.prisma.auditProgram.findMany({
       where: { organization_id: organizationId, deleted_at: null },
     });
+  }
+
+  async findAuditProgram(organizationId: string, id: string) {
+    const auditProgram = await this.prisma.auditProgram.findFirst({
+      where: { id, organization_id: organizationId, deleted_at: null },
+      include: { audits: { where: { deleted_at: null } } },
+    });
+    if (!auditProgram) {
+      throw new NotFoundException('Audit program not found');
+    }
+    return auditProgram;
+  }
+
+  async updateAuditProgram(
+    organizationId: string,
+    id: string,
+    dto: UpdateAuditProgramDto,
+  ): Promise<AuditProgram> {
+    await this.assertExists(
+      () =>
+        this.prisma.auditProgram.findFirst({
+          where: { id, organization_id: organizationId, deleted_at: null },
+          select: { id: true },
+        }),
+      'Audit program',
+    );
+    return this.prisma.auditProgram.update({ where: { id }, data: dto });
   }
 
   async createAudit(organizationId: string, dto: CreateAuditDto): Promise<Audit> {
@@ -44,6 +73,39 @@ export class SgqService {
     return this.prisma.audit.findMany({ where: { organization_id: organizationId, deleted_at: null } });
   }
 
+  async findAudit(organizationId: string, id: string) {
+    const audit = await this.prisma.audit.findFirst({
+      where: { id, organization_id: organizationId, deleted_at: null },
+      include: {
+        nonConformities: { where: { deleted_at: null } },
+        auditProgram: { select: { id: true, year: true } },
+      },
+    });
+    if (!audit) {
+      throw new NotFoundException('Audit not found');
+    }
+    return audit;
+  }
+
+  async updateAudit(organizationId: string, id: string, dto: UpdateAuditDto): Promise<Audit> {
+    await this.assertExists(
+      () =>
+        this.prisma.audit.findFirst({
+          where: { id, organization_id: organizationId, deleted_at: null },
+          select: { id: true },
+        }),
+      'Audit',
+    );
+    return this.prisma.audit.update({
+      where: { id },
+      data: {
+        scheduled_at: dto.scheduled_at ? new Date(dto.scheduled_at) : undefined,
+        auditor: dto.auditor,
+        scope: dto.scope,
+      },
+    });
+  }
+
   async createNonConformity(
     organizationId: string,
     dto: CreateNonConformityDto,
@@ -63,6 +125,25 @@ export class SgqService {
     return this.prisma.nonConformity.findMany({
       where: { organization_id: organizationId, deleted_at: null },
     });
+  }
+
+  async findNonConformity(organizationId: string, id: string) {
+    const nonConformity = await this.prisma.nonConformity.findFirst({
+      where: { id, organization_id: organizationId, deleted_at: null },
+      include: {
+        correctiveActions: { where: { deleted_at: null } },
+        audit: { select: { id: true, scope: true } },
+      },
+    });
+    if (!nonConformity) {
+      throw new NotFoundException('Non-conformity not found');
+    }
+
+    const canClose =
+      nonConformity.correctiveActions.length > 0 &&
+      nonConformity.correctiveActions.every((action) => action.status === 'concluida');
+
+    return { ...nonConformity, canClose };
   }
 
   /**
