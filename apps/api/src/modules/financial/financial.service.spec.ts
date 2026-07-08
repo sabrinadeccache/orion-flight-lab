@@ -25,6 +25,49 @@ describe('FinancialService', () => {
     service = module.get(FinancialService);
   });
 
+  describe('findCharge', () => {
+    it('computes totalPaid, remaining and isFullyPaid from the linked payments', async () => {
+      prisma.charge.findFirst.mockResolvedValue({
+        id: 'charge-1',
+        amount: 1000,
+        payments: [{ amount: 400 }, { amount: 200 }],
+      });
+
+      const result = await service.findCharge(ORG_ID, 'charge-1');
+
+      expect(result).toMatchObject({ totalPaid: 600, remaining: 400, isFullyPaid: false });
+    });
+
+    it('marks isFullyPaid when payments cover the full amount', async () => {
+      prisma.charge.findFirst.mockResolvedValue({
+        id: 'charge-1',
+        amount: 1000,
+        payments: [{ amount: 1000 }],
+      });
+
+      const result = await service.findCharge(ORG_ID, 'charge-1');
+
+      expect(result).toMatchObject({ totalPaid: 1000, remaining: 0, isFullyPaid: true });
+    });
+
+    it('throws NotFoundException for a charge outside the organization', async () => {
+      prisma.charge.findFirst.mockResolvedValue(null);
+
+      await expect(service.findCharge(ORG_ID, 'charge-1')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('updateCharge', () => {
+    it('throws NotFoundException for a charge outside the organization', async () => {
+      prisma.charge.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.updateCharge(ORG_ID, 'charge-1', { description: 'Nova descrição' }),
+      ).rejects.toThrow(NotFoundException);
+      expect(prisma.charge.update).not.toHaveBeenCalled();
+    });
+  });
+
   describe("RN-31: a payment can't push a charge's total paid past its amount", () => {
     it('blocks a payment that would exceed the remaining balance', async () => {
       prisma.charge.findFirst.mockResolvedValue({ id: 'charge-1', amount: 1000, payments: [] });

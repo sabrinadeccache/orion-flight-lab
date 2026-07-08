@@ -9,6 +9,8 @@ import { CreateAccountDto } from './dto/create-account.dto';
 import { CreateProposalDto } from './dto/create-proposal.dto';
 import { CreatePipelineDto } from './dto/create-pipeline.dto';
 import { UpdatePipelineStageDto } from './dto/update-pipeline-stage.dto';
+import { UpdateAccountDto } from './dto/update-account.dto';
+import { UpdateProposalDto } from './dto/update-proposal.dto';
 
 @Controller('crm')
 @UseGuards(SupabaseAuthGuard, OrganizationGuard)
@@ -26,6 +28,21 @@ export class CrmController {
     return this.crmService.findAccounts(user.organizationId);
   }
 
+  @Get('accounts/:id')
+  findAccount(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.crmService.findAccount(user.organizationId, id);
+  }
+
+  @Patch('accounts/:id')
+  @AuditLog({ action: 'update', entity: 'Account' })
+  updateAccount(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateAccountDto,
+  ) {
+    return this.crmService.updateAccount(user.organizationId, id, dto);
+  }
+
   @Post('proposals')
   @AuditLog({ action: 'create', entity: 'Proposal' })
   createProposal(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateProposalDto) {
@@ -37,6 +54,21 @@ export class CrmController {
     return this.crmService.findProposals(user.organizationId);
   }
 
+  @Get('proposals/:id')
+  findProposal(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.crmService.findProposal(user.organizationId, id);
+  }
+
+  @Patch('proposals/:id')
+  @AuditLog({ action: 'update', entity: 'Proposal' })
+  updateProposal(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateProposalDto,
+  ) {
+    return this.crmService.updateProposal(user.organizationId, id, dto);
+  }
+
   @Post('pipelines')
   @AuditLog({ action: 'create', entity: 'Pipeline' })
   createPipeline(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreatePipelineDto) {
@@ -46,6 +78,11 @@ export class CrmController {
   @Get('pipelines')
   findPipelines(@CurrentUser() user: AuthenticatedUser) {
     return this.crmService.findPipelines(user.organizationId);
+  }
+
+  @Get('pipelines/:id')
+  findPipeline(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.crmService.findPipeline(user.organizationId, id);
   }
 
   @Patch('pipelines/:id/stage')

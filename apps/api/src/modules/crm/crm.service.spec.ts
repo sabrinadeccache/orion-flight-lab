@@ -9,16 +9,16 @@ describe('CrmService', () => {
   let service: CrmService;
   let prisma: {
     client: { findFirst: jest.Mock };
-    account: { findFirst: jest.Mock };
-    proposal: { create: jest.Mock; findFirst: jest.Mock };
+    account: { findFirst: jest.Mock; update: jest.Mock };
+    proposal: { create: jest.Mock; findFirst: jest.Mock; update: jest.Mock };
     pipeline: { findFirst: jest.Mock; update: jest.Mock };
   };
 
   beforeEach(async () => {
     prisma = {
       client: { findFirst: jest.fn() },
-      account: { findFirst: jest.fn() },
-      proposal: { create: jest.fn(), findFirst: jest.fn() },
+      account: { findFirst: jest.fn(), update: jest.fn() },
+      proposal: { create: jest.fn(), findFirst: jest.fn(), update: jest.fn() },
       pipeline: { findFirst: jest.fn(), update: jest.fn() },
     };
 
@@ -116,6 +116,28 @@ describe('CrmService', () => {
       await expect(
         service.updatePipelineStage(ORG_ID, 'pipeline-1', { stage: 'ganho' }),
       ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('updateAccount', () => {
+    it('throws NotFoundException for an account outside the organization', async () => {
+      prisma.account.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.updateAccount(ORG_ID, 'account-1', { status: 'inativo' }),
+      ).rejects.toThrow(NotFoundException);
+      expect(prisma.account.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('updateProposal', () => {
+    it('throws NotFoundException for a proposal outside the organization', async () => {
+      prisma.proposal.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.updateProposal(ORG_ID, 'proposal-1', { title: 'Nova proposta' }),
+      ).rejects.toThrow(NotFoundException);
+      expect(prisma.proposal.update).not.toHaveBeenCalled();
     });
   });
 });

@@ -3,6 +3,7 @@ import { Charge, Delinquency, Payment } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CreateChargeDto } from './dto/create-charge.dto';
 import { CreatePaymentDto } from './dto/create-payment.dto';
+import { UpdateChargeDto } from './dto/update-charge.dto';
 
 @Injectable()
 export class FinancialService {
@@ -39,8 +40,48 @@ export class FinancialService {
     });
   }
 
-  findCharges(organizationId: string): Promise<Charge[]> {
-    return this.prisma.charge.findMany({ where: { organization_id: organizationId, deleted_at: null } });
+  findCharges(organizationId: string) {
+    return this.prisma.charge.findMany({
+      where: { organization_id: organizationId, deleted_at: null },
+      include: { client: { select: { id: true, name: true } } },
+    });
+  }
+
+  async findCharge(organizationId: string, id: string) {
+    const charge = await this.prisma.charge.findFirst({
+      where: { id, organization_id: organizationId, deleted_at: null },
+      include: {
+        client: { select: { id: true, name: true } },
+        payments: { where: { deleted_at: null } },
+      },
+    });
+    if (!charge) {
+      throw new NotFoundException('Charge not found');
+    }
+
+    const totalPaid = charge.payments.reduce((sum, payment) => sum + Number(payment.amount), 0);
+    const remaining = Number(charge.amount) - totalPaid;
+
+    return { ...charge, totalPaid, remaining, isFullyPaid: remaining <= 0 };
+  }
+
+  async updateCharge(organizationId: string, id: string, dto: UpdateChargeDto): Promise<Charge> {
+    await this.assertExists(
+      () =>
+        this.prisma.charge.findFirst({
+          where: { id, organization_id: organizationId, deleted_at: null },
+          select: { id: true },
+        }),
+      'Charge',
+    );
+    return this.prisma.charge.update({
+      where: { id },
+      data: {
+        description: dto.description,
+        due_date: dto.due_date ? new Date(dto.due_date) : undefined,
+        status: dto.status,
+      },
+    });
   }
 
   /** RN-31: a payment can't push the charge's total paid past its amount. */

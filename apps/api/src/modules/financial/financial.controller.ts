@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { SupabaseAuthGuard } from '../auth/guards/supabase-auth.guard';
 import { OrganizationGuard } from '../auth/guards/organization.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -7,6 +7,7 @@ import { AuthenticatedUser } from '../auth/types/authenticated-user';
 import { FinancialService } from './financial.service';
 import { CreateChargeDto } from './dto/create-charge.dto';
 import { CreatePaymentDto } from './dto/create-payment.dto';
+import { UpdateChargeDto } from './dto/update-charge.dto';
 
 @Controller('financial')
 @UseGuards(SupabaseAuthGuard, OrganizationGuard)
@@ -22,6 +23,21 @@ export class FinancialController {
   @Get('charges')
   findCharges(@CurrentUser() user: AuthenticatedUser) {
     return this.financialService.findCharges(user.organizationId);
+  }
+
+  @Get('charges/:id')
+  findCharge(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.financialService.findCharge(user.organizationId, id);
+  }
+
+  @Patch('charges/:id')
+  @AuditLog({ action: 'update', entity: 'Charge' })
+  updateCharge(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateChargeDto,
+  ) {
+    return this.financialService.updateCharge(user.organizationId, id, dto);
   }
 
   @Post('payments')
