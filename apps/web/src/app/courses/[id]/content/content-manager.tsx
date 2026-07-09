@@ -49,6 +49,13 @@ export function ContentManager({ courseId }: { courseId: string }): React.ReactE
   const [quizByLesson, setQuizByLesson] = useState<Record<string, QuizT | null>>({});
   const [error, setError] = useState<string | null>(null);
 
+  const [editingSegment, setEditingSegment] = useState<string | null>(null);
+  const [editingModule, setEditingModule] = useState<string | null>(null);
+  const [editingUnit, setEditingUnit] = useState<string | null>(null);
+  const [editingSubUnit, setEditingSubUnit] = useState<string | null>(null);
+  const [editingLesson, setEditingLesson] = useState<string | null>(null);
+  const [editingMaterial, setEditingMaterial] = useState<string | null>(null);
+
   async function authedFetch(path: string, init: RequestInit = {}): Promise<Response> {
     return fetch(`${API_URL}${path}`, {
       ...init,
@@ -78,6 +85,21 @@ export function ContentManager({ courseId }: { courseId: string }): React.ReactE
   ): Promise<void> {
     setError(null);
     const response = await authedFetch(path, { method: 'POST', body: JSON.stringify(body) });
+    const responseBody = await response.json().catch(() => null);
+    if (!response.ok) {
+      setError(responseBody?.errors?.[0]?.message ?? 'Não foi possível salvar.');
+      return;
+    }
+    await onSuccess();
+  }
+
+  async function handleUpdate(
+    path: string,
+    body: Record<string, unknown>,
+    onSuccess: () => Promise<void> | void,
+  ): Promise<void> {
+    setError(null);
+    const response = await authedFetch(path, { method: 'PATCH', body: JSON.stringify(body) });
     const responseBody = await response.json().catch(() => null);
     if (!response.ok) {
       setError(responseBody?.errors?.[0]?.message ?? 'Não foi possível salvar.');
@@ -194,23 +216,48 @@ export function ContentManager({ courseId }: { courseId: string }): React.ReactE
         {(segments ?? []).map((segment) => (
           <div key={segment.id} className="rounded-lg border border-slate-200 bg-white">
             <div className="flex items-center justify-between px-4 py-3">
-              <button
-                onClick={() => toggleSegment(segment.id)}
-                className="text-left font-medium text-slate-900 hover:underline"
-              >
-                {expandedSegment === segment.id ? '▾' : '▸'} {segment.name}
-              </button>
-              <button
-                onClick={() =>
-                  handleDelete(`/training/segments/${segment.id}`, async () => {
-                    const data = (await loadJson<Named[]>(`/training/courses/${courseId}/segments`)) ?? [];
-                    setSegments(data);
-                  })
-                }
-                className="text-xs text-red-600 hover:underline"
-              >
-                Excluir
-              </button>
+              {editingSegment === segment.id ? (
+                <EditForm
+                  initialName={segment.name}
+                  initialOrder={segment.order}
+                  onSubmit={(name, order) =>
+                    handleUpdate(`/training/segments/${segment.id}`, { name, order }, async () => {
+                      const data = (await loadJson<Named[]>(`/training/courses/${courseId}/segments`)) ?? [];
+                      setSegments(data);
+                      setEditingSegment(null);
+                    })
+                  }
+                  onCancel={() => setEditingSegment(null)}
+                />
+              ) : (
+                <>
+                  <button
+                    onClick={() => toggleSegment(segment.id)}
+                    className="text-left font-medium text-slate-900 hover:underline"
+                  >
+                    {expandedSegment === segment.id ? '▾' : '▸'} {segment.name}
+                  </button>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => setEditingSegment(segment.id)}
+                      className="text-xs text-slate-600 hover:underline"
+                    >
+                      Editar
+                    </button>
+                    <button
+                      onClick={() =>
+                        handleDelete(`/training/segments/${segment.id}`, async () => {
+                          const data = (await loadJson<Named[]>(`/training/courses/${courseId}/segments`)) ?? [];
+                          setSegments(data);
+                        })
+                      }
+                      className="text-xs text-red-600 hover:underline"
+                    >
+                      Excluir
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
 
             {expandedSegment === segment.id && (
@@ -228,24 +275,50 @@ export function ContentManager({ courseId }: { courseId: string }): React.ReactE
                   {(modulesBySegment[segment.id] ?? []).map((moduleItem) => (
                     <div key={moduleItem.id} className="rounded-md border border-slate-200 bg-slate-50">
                       <div className="flex items-center justify-between px-3 py-2">
-                        <button
-                          onClick={() => toggleModule(moduleItem.id)}
-                          className="text-left text-sm font-medium text-slate-800 hover:underline"
-                        >
-                          {expandedModule === moduleItem.id ? '▾' : '▸'} {moduleItem.name}
-                        </button>
-                        <button
-                          onClick={() =>
-                            handleDelete(`/training/modules/${moduleItem.id}`, async () => {
-                              const data =
-                                (await loadJson<Named[]>(`/training/segments/${segment.id}/modules`)) ?? [];
-                              setModulesBySegment((prev) => ({ ...prev, [segment.id]: data }));
-                            })
-                          }
-                          className="text-xs text-red-600 hover:underline"
-                        >
-                          Excluir
-                        </button>
+                        {editingModule === moduleItem.id ? (
+                          <EditForm
+                            initialName={moduleItem.name}
+                            initialOrder={moduleItem.order}
+                            onSubmit={(name, order) =>
+                              handleUpdate(`/training/modules/${moduleItem.id}`, { name, order }, async () => {
+                                const data =
+                                  (await loadJson<Named[]>(`/training/segments/${segment.id}/modules`)) ?? [];
+                                setModulesBySegment((prev) => ({ ...prev, [segment.id]: data }));
+                                setEditingModule(null);
+                              })
+                            }
+                            onCancel={() => setEditingModule(null)}
+                          />
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => toggleModule(moduleItem.id)}
+                              className="text-left text-sm font-medium text-slate-800 hover:underline"
+                            >
+                              {expandedModule === moduleItem.id ? '▾' : '▸'} {moduleItem.name}
+                            </button>
+                            <div className="flex items-center gap-3">
+                              <button
+                                onClick={() => setEditingModule(moduleItem.id)}
+                                className="text-xs text-slate-600 hover:underline"
+                              >
+                                Editar
+                              </button>
+                              <button
+                                onClick={() =>
+                                  handleDelete(`/training/modules/${moduleItem.id}`, async () => {
+                                    const data =
+                                      (await loadJson<Named[]>(`/training/segments/${segment.id}/modules`)) ?? [];
+                                    setModulesBySegment((prev) => ({ ...prev, [segment.id]: data }));
+                                  })
+                                }
+                                className="text-xs text-red-600 hover:underline"
+                              >
+                                Excluir
+                              </button>
+                            </div>
+                          </>
+                        )}
                       </div>
 
                       {expandedModule === moduleItem.id && (
@@ -264,24 +337,53 @@ export function ContentManager({ courseId }: { courseId: string }): React.ReactE
                             {(unitsByModule[moduleItem.id] ?? []).map((unit) => (
                               <div key={unit.id} className="rounded-md border border-slate-200 bg-white">
                                 <div className="flex items-center justify-between px-3 py-2">
-                                  <button
-                                    onClick={() => toggleUnit(unit.id)}
-                                    className="text-left text-sm font-medium text-slate-800 hover:underline"
-                                  >
-                                    {expandedUnit === unit.id ? '▾' : '▸'} {unit.name}
-                                  </button>
-                                  <button
-                                    onClick={() =>
-                                      handleDelete(`/training/units/${unit.id}`, async () => {
-                                        const data =
-                                          (await loadJson<Named[]>(`/training/modules/${moduleItem.id}/units`)) ?? [];
-                                        setUnitsByModule((prev) => ({ ...prev, [moduleItem.id]: data }));
-                                      })
-                                    }
-                                    className="text-xs text-red-600 hover:underline"
-                                  >
-                                    Excluir
-                                  </button>
+                                  {editingUnit === unit.id ? (
+                                    <EditForm
+                                      initialName={unit.name}
+                                      initialOrder={unit.order}
+                                      onSubmit={(name, order) =>
+                                        handleUpdate(`/training/units/${unit.id}`, { name, order }, async () => {
+                                          const data =
+                                            (await loadJson<Named[]>(`/training/modules/${moduleItem.id}/units`)) ??
+                                            [];
+                                          setUnitsByModule((prev) => ({ ...prev, [moduleItem.id]: data }));
+                                          setEditingUnit(null);
+                                        })
+                                      }
+                                      onCancel={() => setEditingUnit(null)}
+                                    />
+                                  ) : (
+                                    <>
+                                      <button
+                                        onClick={() => toggleUnit(unit.id)}
+                                        className="text-left text-sm font-medium text-slate-800 hover:underline"
+                                      >
+                                        {expandedUnit === unit.id ? '▾' : '▸'} {unit.name}
+                                      </button>
+                                      <div className="flex items-center gap-3">
+                                        <button
+                                          onClick={() => setEditingUnit(unit.id)}
+                                          className="text-xs text-slate-600 hover:underline"
+                                        >
+                                          Editar
+                                        </button>
+                                        <button
+                                          onClick={() =>
+                                            handleDelete(`/training/units/${unit.id}`, async () => {
+                                              const data =
+                                                (await loadJson<Named[]>(
+                                                  `/training/modules/${moduleItem.id}/units`,
+                                                )) ?? [];
+                                              setUnitsByModule((prev) => ({ ...prev, [moduleItem.id]: data }));
+                                            })
+                                          }
+                                          className="text-xs text-red-600 hover:underline"
+                                        >
+                                          Excluir
+                                        </button>
+                                      </div>
+                                    </>
+                                  )}
                                 </div>
 
                                 {expandedUnit === unit.id && (
@@ -304,26 +406,58 @@ export function ContentManager({ courseId }: { courseId: string }): React.ReactE
                                       {(subUnitsByUnit[unit.id] ?? []).map((subUnit) => (
                                         <div key={subUnit.id} className="rounded-md border border-slate-200">
                                           <div className="flex items-center justify-between px-3 py-2">
-                                            <button
-                                              onClick={() => toggleSubUnit(subUnit.id)}
-                                              className="text-left text-sm font-medium text-slate-800 hover:underline"
-                                            >
-                                              {expandedSubUnit === subUnit.id ? '▾' : '▸'} {subUnit.name}
-                                            </button>
-                                            <button
-                                              onClick={() =>
-                                                handleDelete(`/training/sub-units/${subUnit.id}`, async () => {
-                                                  const data =
-                                                    (await loadJson<Named[]>(
-                                                      `/training/units/${unit.id}/sub-units`,
-                                                    )) ?? [];
-                                                  setSubUnitsByUnit((prev) => ({ ...prev, [unit.id]: data }));
-                                                })
-                                              }
-                                              className="text-xs text-red-600 hover:underline"
-                                            >
-                                              Excluir
-                                            </button>
+                                            {editingSubUnit === subUnit.id ? (
+                                              <EditForm
+                                                initialName={subUnit.name}
+                                                initialOrder={subUnit.order}
+                                                onSubmit={(name, order) =>
+                                                  handleUpdate(
+                                                    `/training/sub-units/${subUnit.id}`,
+                                                    { name, order },
+                                                    async () => {
+                                                      const data =
+                                                        (await loadJson<Named[]>(
+                                                          `/training/units/${unit.id}/sub-units`,
+                                                        )) ?? [];
+                                                      setSubUnitsByUnit((prev) => ({ ...prev, [unit.id]: data }));
+                                                      setEditingSubUnit(null);
+                                                    },
+                                                  )
+                                                }
+                                                onCancel={() => setEditingSubUnit(null)}
+                                              />
+                                            ) : (
+                                              <>
+                                                <button
+                                                  onClick={() => toggleSubUnit(subUnit.id)}
+                                                  className="text-left text-sm font-medium text-slate-800 hover:underline"
+                                                >
+                                                  {expandedSubUnit === subUnit.id ? '▾' : '▸'} {subUnit.name}
+                                                </button>
+                                                <div className="flex items-center gap-3">
+                                                  <button
+                                                    onClick={() => setEditingSubUnit(subUnit.id)}
+                                                    className="text-xs text-slate-600 hover:underline"
+                                                  >
+                                                    Editar
+                                                  </button>
+                                                  <button
+                                                    onClick={() =>
+                                                      handleDelete(`/training/sub-units/${subUnit.id}`, async () => {
+                                                        const data =
+                                                          (await loadJson<Named[]>(
+                                                            `/training/units/${unit.id}/sub-units`,
+                                                          )) ?? [];
+                                                        setSubUnitsByUnit((prev) => ({ ...prev, [unit.id]: data }));
+                                                      })
+                                                    }
+                                                    className="text-xs text-red-600 hover:underline"
+                                                  >
+                                                    Excluir
+                                                  </button>
+                                                </div>
+                                              </>
+                                            )}
                                           </div>
 
                                           {expandedSubUnit === subUnit.id && (
@@ -355,30 +489,69 @@ export function ContentManager({ courseId }: { courseId: string }): React.ReactE
                                                 {(lessonsBySubUnit[subUnit.id] ?? []).map((lesson) => (
                                                   <div key={lesson.id} className="rounded-md border border-slate-200">
                                                     <div className="flex items-center justify-between px-3 py-2">
-                                                      <button
-                                                        onClick={() => toggleLesson(lesson.id)}
-                                                        className="text-left text-sm font-medium text-slate-800 hover:underline"
-                                                      >
-                                                        {expandedLesson === lesson.id ? '▾' : '▸'} {lesson.name} (
-                                                        {lesson.duration_hours}h)
-                                                      </button>
-                                                      <button
-                                                        onClick={() =>
-                                                          handleDelete(`/training/lessons/${lesson.id}`, async () => {
-                                                            const data =
-                                                              (await loadJson<LessonT[]>(
-                                                                `/training/sub-units/${subUnit.id}/lessons`,
-                                                              )) ?? [];
-                                                            setLessonsBySubUnit((prev) => ({
-                                                              ...prev,
-                                                              [subUnit.id]: data,
-                                                            }));
-                                                          })
-                                                        }
-                                                        className="text-xs text-red-600 hover:underline"
-                                                      >
-                                                        Excluir
-                                                      </button>
+                                                      {editingLesson === lesson.id ? (
+                                                        <LessonEditForm
+                                                          initialName={lesson.name}
+                                                          initialOrder={lesson.order}
+                                                          initialDuration={Number(lesson.duration_hours)}
+                                                          onSubmit={(name, order, durationHours) =>
+                                                            handleUpdate(
+                                                              `/training/lessons/${lesson.id}`,
+                                                              { name, order, duration_hours: durationHours },
+                                                              async () => {
+                                                                const data =
+                                                                  (await loadJson<LessonT[]>(
+                                                                    `/training/sub-units/${subUnit.id}/lessons`,
+                                                                  )) ?? [];
+                                                                setLessonsBySubUnit((prev) => ({
+                                                                  ...prev,
+                                                                  [subUnit.id]: data,
+                                                                }));
+                                                                setEditingLesson(null);
+                                                              },
+                                                            )
+                                                          }
+                                                          onCancel={() => setEditingLesson(null)}
+                                                        />
+                                                      ) : (
+                                                        <>
+                                                          <button
+                                                            onClick={() => toggleLesson(lesson.id)}
+                                                            className="text-left text-sm font-medium text-slate-800 hover:underline"
+                                                          >
+                                                            {expandedLesson === lesson.id ? '▾' : '▸'} {lesson.name} (
+                                                            {lesson.duration_hours}h)
+                                                          </button>
+                                                          <div className="flex items-center gap-3">
+                                                            <button
+                                                              onClick={() => setEditingLesson(lesson.id)}
+                                                              className="text-xs text-slate-600 hover:underline"
+                                                            >
+                                                              Editar
+                                                            </button>
+                                                            <button
+                                                              onClick={() =>
+                                                                handleDelete(
+                                                                  `/training/lessons/${lesson.id}`,
+                                                                  async () => {
+                                                                    const data =
+                                                                      (await loadJson<LessonT[]>(
+                                                                        `/training/sub-units/${subUnit.id}/lessons`,
+                                                                      )) ?? [];
+                                                                    setLessonsBySubUnit((prev) => ({
+                                                                      ...prev,
+                                                                      [subUnit.id]: data,
+                                                                    }));
+                                                                  },
+                                                                )
+                                                              }
+                                                              className="text-xs text-red-600 hover:underline"
+                                                            >
+                                                              Excluir
+                                                            </button>
+                                                          </div>
+                                                        </>
+                                                      )}
                                                     </div>
 
                                                     {expandedLesson === lesson.id && (
@@ -414,63 +587,110 @@ export function ContentManager({ courseId }: { courseId: string }): React.ReactE
                                                           }
                                                         />
                                                         <ul className="mt-2 space-y-2">
-                                                          {(materialsByLesson[lesson.id] ?? []).map((material) => (
-                                                            <li
-                                                              key={material.id}
-                                                              className="flex items-center justify-between rounded border border-slate-200 px-3 py-2 text-sm"
-                                                            >
-                                                              <div>
-                                                                <span className="font-medium">{material.name}</span>{' '}
-                                                                <span className="text-xs text-slate-500">
-                                                                  ({material.type})
-                                                                </span>
-                                                                {material.type === 'ARQUIVO' && !material.file_url && (
-                                                                  <label className="ml-3 cursor-pointer text-xs text-slate-600 underline">
-                                                                    Enviar arquivo
-                                                                    <input
-                                                                      type="file"
-                                                                      className="hidden"
-                                                                      onChange={(event) => {
-                                                                        const file = event.target.files?.[0];
-                                                                        if (file)
-                                                                          handleUploadMaterialFile(
-                                                                            material.id,
-                                                                            lesson.id,
-                                                                            file,
-                                                                          );
-                                                                      }}
-                                                                    />
-                                                                  </label>
-                                                                )}
-                                                                {material.type === 'ARQUIVO' &&
-                                                                  material.file_url && (
-                                                                    <span className="ml-3 text-xs text-emerald-600">
-                                                                      Arquivo enviado
-                                                                    </span>
-                                                                  )}
-                                                              </div>
-                                                              <button
-                                                                onClick={() =>
-                                                                  handleDelete(
-                                                                    `/training/materials/${material.id}`,
-                                                                    async () => {
-                                                                      const data =
-                                                                        (await loadJson<MaterialT[]>(
-                                                                          `/training/lessons/${lesson.id}/materials`,
-                                                                        )) ?? [];
-                                                                      setMaterialsByLesson((prev) => ({
-                                                                        ...prev,
-                                                                        [lesson.id]: data,
-                                                                      }));
-                                                                    },
-                                                                  )
-                                                                }
-                                                                className="text-xs text-red-600 hover:underline"
+                                                          {(materialsByLesson[lesson.id] ?? []).map((material) =>
+                                                            editingMaterial === material.id ? (
+                                                              <li
+                                                                key={material.id}
+                                                                className="rounded border border-slate-200 px-3 py-2 text-sm"
                                                               >
-                                                                Excluir
-                                                              </button>
-                                                            </li>
-                                                          ))}
+                                                                <MaterialEditForm
+                                                                  material={material}
+                                                                  onSubmit={(name, contentOrFileUrl) =>
+                                                                    handleUpdate(
+                                                                      `/training/materials/${material.id}`,
+                                                                      {
+                                                                        name,
+                                                                        ...(material.type === 'TEXTO'
+                                                                          ? { content_html: contentOrFileUrl }
+                                                                          : material.type === 'VIDEO_EXTERNO'
+                                                                            ? { file_url: contentOrFileUrl }
+                                                                            : {}),
+                                                                      },
+                                                                      async () => {
+                                                                        const data =
+                                                                          (await loadJson<MaterialT[]>(
+                                                                            `/training/lessons/${lesson.id}/materials`,
+                                                                          )) ?? [];
+                                                                        setMaterialsByLesson((prev) => ({
+                                                                          ...prev,
+                                                                          [lesson.id]: data,
+                                                                        }));
+                                                                        setEditingMaterial(null);
+                                                                      },
+                                                                    )
+                                                                  }
+                                                                  onCancel={() => setEditingMaterial(null)}
+                                                                />
+                                                              </li>
+                                                            ) : (
+                                                              <li
+                                                                key={material.id}
+                                                                className="flex items-center justify-between rounded border border-slate-200 px-3 py-2 text-sm"
+                                                              >
+                                                                <div>
+                                                                  <span className="font-medium">
+                                                                    {material.name}
+                                                                  </span>{' '}
+                                                                  <span className="text-xs text-slate-500">
+                                                                    ({material.type})
+                                                                  </span>
+                                                                  {material.type === 'ARQUIVO' &&
+                                                                    !material.file_url && (
+                                                                      <label className="ml-3 cursor-pointer text-xs text-slate-600 underline">
+                                                                        Enviar arquivo
+                                                                        <input
+                                                                          type="file"
+                                                                          className="hidden"
+                                                                          onChange={(event) => {
+                                                                            const file = event.target.files?.[0];
+                                                                            if (file)
+                                                                              handleUploadMaterialFile(
+                                                                                material.id,
+                                                                                lesson.id,
+                                                                                file,
+                                                                              );
+                                                                          }}
+                                                                        />
+                                                                      </label>
+                                                                    )}
+                                                                  {material.type === 'ARQUIVO' &&
+                                                                    material.file_url && (
+                                                                      <span className="ml-3 text-xs text-emerald-600">
+                                                                        Arquivo enviado
+                                                                      </span>
+                                                                    )}
+                                                                </div>
+                                                                <div className="flex items-center gap-3">
+                                                                  <button
+                                                                    onClick={() => setEditingMaterial(material.id)}
+                                                                    className="text-xs text-slate-600 hover:underline"
+                                                                  >
+                                                                    Editar
+                                                                  </button>
+                                                                  <button
+                                                                    onClick={() =>
+                                                                      handleDelete(
+                                                                        `/training/materials/${material.id}`,
+                                                                        async () => {
+                                                                          const data =
+                                                                            (await loadJson<MaterialT[]>(
+                                                                              `/training/lessons/${lesson.id}/materials`,
+                                                                            )) ?? [];
+                                                                          setMaterialsByLesson((prev) => ({
+                                                                            ...prev,
+                                                                            [lesson.id]: data,
+                                                                          }));
+                                                                        },
+                                                                      )
+                                                                    }
+                                                                    className="text-xs text-red-600 hover:underline"
+                                                                  >
+                                                                    Excluir
+                                                                  </button>
+                                                                </div>
+                                                              </li>
+                                                            ),
+                                                          )}
                                                           {(materialsByLesson[lesson.id] ?? []).length === 0 && (
                                                             <p className="text-xs text-slate-400">
                                                               Nenhum material cadastrado.
@@ -571,6 +791,167 @@ function AddForm({
       <button type="button" onClick={() => setOpen(false)} className="text-xs text-slate-500">
         Cancelar
       </button>
+    </form>
+  );
+}
+
+function EditForm({
+  initialName,
+  initialOrder,
+  onSubmit,
+  onCancel,
+}: {
+  initialName: string;
+  initialOrder: number;
+  onSubmit: (name: string, order: number) => void;
+  onCancel: () => void;
+}): React.ReactElement {
+  const [name, setName] = useState(initialName);
+  const [order, setOrder] = useState(String(initialOrder));
+
+  function submit(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault();
+    if (!name.trim()) return;
+    onSubmit(name.trim(), Number(order) || 0);
+  }
+
+  return (
+    <form onSubmit={submit} className="flex flex-1 items-center gap-2">
+      <input
+        autoFocus
+        value={name}
+        onChange={(event) => setName(event.target.value)}
+        className="flex-1 rounded border border-slate-300 px-2 py-1 text-xs"
+      />
+      <input
+        value={order}
+        onChange={(event) => setOrder(event.target.value)}
+        type="number"
+        className="w-16 rounded border border-slate-300 px-2 py-1 text-xs"
+        title="Ordem"
+      />
+      <button type="submit" className="rounded bg-slate-900 px-2 py-1 text-xs text-white">
+        Salvar
+      </button>
+      <button type="button" onClick={onCancel} className="text-xs text-slate-500">
+        Cancelar
+      </button>
+    </form>
+  );
+}
+
+function LessonEditForm({
+  initialName,
+  initialOrder,
+  initialDuration,
+  onSubmit,
+  onCancel,
+}: {
+  initialName: string;
+  initialOrder: number;
+  initialDuration: number;
+  onSubmit: (name: string, order: number, durationHours: number) => void;
+  onCancel: () => void;
+}): React.ReactElement {
+  const [name, setName] = useState(initialName);
+  const [order, setOrder] = useState(String(initialOrder));
+  const [duration, setDuration] = useState(String(initialDuration));
+
+  function submit(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault();
+    if (!name.trim()) return;
+    onSubmit(name.trim(), Number(order) || 0, Number(duration) || 1);
+  }
+
+  return (
+    <form onSubmit={submit} className="flex flex-1 items-center gap-2">
+      <input
+        autoFocus
+        value={name}
+        onChange={(event) => setName(event.target.value)}
+        className="flex-1 rounded border border-slate-300 px-2 py-1 text-xs"
+      />
+      <input
+        value={duration}
+        onChange={(event) => setDuration(event.target.value)}
+        type="number"
+        step="0.5"
+        className="w-16 rounded border border-slate-300 px-2 py-1 text-xs"
+        title="Carga horária (h)"
+      />
+      <input
+        value={order}
+        onChange={(event) => setOrder(event.target.value)}
+        type="number"
+        className="w-16 rounded border border-slate-300 px-2 py-1 text-xs"
+        title="Ordem"
+      />
+      <button type="submit" className="rounded bg-slate-900 px-2 py-1 text-xs text-white">
+        Salvar
+      </button>
+      <button type="button" onClick={onCancel} className="text-xs text-slate-500">
+        Cancelar
+      </button>
+    </form>
+  );
+}
+
+function MaterialEditForm({
+  material,
+  onSubmit,
+  onCancel,
+}: {
+  material: MaterialT;
+  onSubmit: (name: string, contentOrFileUrl: string) => void;
+  onCancel: () => void;
+}): React.ReactElement {
+  const [name, setName] = useState(material.name);
+  const [value, setValue] = useState(
+    material.type === 'TEXTO' ? (material.content_html ?? '') : (material.file_url ?? ''),
+  );
+
+  function submit(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault();
+    if (!name.trim()) return;
+    onSubmit(name.trim(), value.trim());
+  }
+
+  return (
+    <form onSubmit={submit} className="space-y-2">
+      <div className="flex gap-2">
+        <input
+          autoFocus
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          className="flex-1 rounded border border-slate-300 px-2 py-1 text-xs"
+        />
+        <span className="rounded border border-slate-200 px-2 py-1 text-xs text-slate-500">{material.type}</span>
+      </div>
+      {material.type === 'VIDEO_EXTERNO' && (
+        <input
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+          placeholder="https://..."
+          className="w-full rounded border border-slate-300 px-2 py-1 text-xs"
+        />
+      )}
+      {material.type === 'TEXTO' && (
+        <textarea
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+          placeholder="Conteúdo em HTML"
+          rows={3}
+          className="w-full rounded border border-slate-300 px-2 py-1 text-xs"
+        />
+      )}
+      <div className="flex gap-2">
+        <button type="submit" className="rounded bg-slate-900 px-2 py-1 text-xs text-white">
+          Salvar
+        </button>
+        <button type="button" onClick={onCancel} className="text-xs text-slate-500">
+          Cancelar
+        </button>
+      </div>
     </form>
   );
 }
