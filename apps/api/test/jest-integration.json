@@ -6,5 +6,6 @@
     "^.+\\.ts$": "ts-jest"
   },
   "moduleFileExtensions": ["js", "json", "ts"],
-  "testTimeout": 30000
+  "testTimeout": 30000,
+  "globalSetup": "<rootDir>/test/guard-against-real-database.js"
 }
