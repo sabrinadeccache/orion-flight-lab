@@ -253,4 +253,76 @@ describe('TrainingService — content hierarchy (Segment -> Material)', () => {
       expect(prisma.segment.update).not.toHaveBeenCalled();
     });
   });
+
+  describe('getCoursePreviewContent (staff "Visualizar como aluno")', () => {
+    it('throws NotFoundException for a course outside the organization', async () => {
+      prisma.course.findFirst.mockResolvedValue(null);
+
+      await expect(service.getCoursePreviewContent(ORG_ID, 'course-1')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('annotates every lesson as NAO_INICIADO — preview has no real progress', async () => {
+      prisma.course.findFirst.mockResolvedValue({
+        id: 'course-1',
+        name: 'Curso 1',
+        code: 'C1',
+        segments: [
+          {
+            id: 'segment-1',
+            modules: [
+              {
+                id: 'module-1',
+                units: [
+                  {
+                    id: 'unit-1',
+                    subUnits: [
+                      {
+                        id: 'sub-unit-1',
+                        lessons: [{ id: 'lesson-1', quiz: { id: 'quiz-1' } }, { id: 'lesson-2', quiz: null }],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      });
+
+      const result = await service.getCoursePreviewContent(ORG_ID, 'course-1');
+
+      const lessons = result.segments[0].modules[0].units[0].subUnits[0].lessons;
+      expect(lessons).toEqual([
+        { id: 'lesson-1', quiz: { id: 'quiz-1' }, hasQuiz: true, progressStatus: 'NAO_INICIADO' },
+        { id: 'lesson-2', quiz: null, hasQuiz: false, progressStatus: 'NAO_INICIADO' },
+      ]);
+    });
+  });
+
+  describe('getLessonPreview (staff "Visualizar como aluno")', () => {
+    it('throws NotFoundException for a lesson outside the organization', async () => {
+      prisma.lesson.findFirst.mockResolvedValue(null);
+
+      await expect(service.getLessonPreview(ORG_ID, 'lesson-1')).rejects.toThrow(NotFoundException);
+    });
+
+    it('never exposes the raw storage path of an ARQUIVO material', async () => {
+      prisma.lesson.findFirst.mockResolvedValue({
+        id: 'lesson-1',
+        name: 'Lição 1',
+        duration_hours: '1',
+        quiz: { id: 'quiz-1' },
+        materials: [
+          { id: 'material-1', name: 'Slide', type: 'ARQUIVO', content_html: null, file_url: 'org-1/material-1' },
+        ],
+      });
+
+      const result = await service.getLessonPreview(ORG_ID, 'lesson-1');
+
+      expect(result.hasQuiz).toBe(true);
+      expect(result.materials[0].file_url).toBeNull();
+    });
+  });
 });

@@ -496,4 +496,22 @@ export class TrainingController {
       .getMaterialDownloadUrl(user.organizationId, id)
       .then((url) => ({ url }));
   }
+
+  // ---------------------------------------------------------------------
+  // Staff preview ("Visualizar como aluno")
+  // ---------------------------------------------------------------------
+
+  @Get('courses/:id/preview-content')
+  @UseGuards(SupabaseAuthGuard, OrganizationGuard, RolesGuard)
+  @Roles(...STAFF_ROLES)
+  getCoursePreviewContent(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.trainingService.getCoursePreviewContent(user.organizationId, id);
+  }
+
+  @Get('lessons/:id/preview')
+  @UseGuards(SupabaseAuthGuard, OrganizationGuard, RolesGuard)
+  @Roles(...STAFF_ROLES)
+  getLessonPreview(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.trainingService.getLessonPreview(user.organizationId, id);
+  }
 }

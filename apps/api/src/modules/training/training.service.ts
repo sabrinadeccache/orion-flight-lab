@@ -398,6 +398,100 @@ export class TrainingService {
     return this.storage.createSignedUrl('lms-materials', material.file_url);
   }
 
+  // ---------------------------------------------------------------------
+  // Staff preview ("Visualizar como aluno") — same tree/lesson shape the
+  // portal shows a student, but with no Enrollment/Student/LessonProgress
+  // involved (staff has none), so progress is always the initial state and
+  // there is no completion/quiz-submission side effect here — read-only.
+  // ---------------------------------------------------------------------
+
+  async getCoursePreviewContent(organizationId: string, courseId: string) {
+    const course = await this.prisma.course.findFirst({
+      where: { id: courseId, organization_id: organizationId, deleted_at: null },
+      include: {
+        segments: {
+          where: { deleted_at: null },
+          orderBy: { order: 'asc' },
+          include: {
+            modules: {
+              where: { deleted_at: null },
+              orderBy: { order: 'asc' },
+              include: {
+                units: {
+                  where: { deleted_at: null },
+                  orderBy: { order: 'asc' },
+                  include: {
+                    subUnits: {
+                      where: { deleted_at: null },
+                      orderBy: { order: 'asc' },
+                      include: {
+                        lessons: {
+                          where: { deleted_at: null },
+                          orderBy: { order: 'asc' },
+                          include: { quiz: { select: { id: true } } },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!course) {
+      throw new NotFoundException('Course not found');
+    }
+
+    const segments = course.segments.map((segment) => ({
+      ...segment,
+      modules: segment.modules.map((module) => ({
+        ...module,
+        units: module.units.map((unit) => ({
+          ...unit,
+          subUnits: unit.subUnits.map((subUnit) => ({
+            ...subUnit,
+            lessons: subUnit.lessons.map((lesson) => ({
+              ...lesson,
+              hasQuiz: lesson.quiz !== null,
+              progressStatus: 'NAO_INICIADO' as const,
+            })),
+          })),
+        })),
+      })),
+    }));
+
+    return { course: { id: course.id, name: course.name, code: course.code }, segments };
+  }
+
+  async getLessonPreview(organizationId: string, lessonId: string) {
+    const lesson = await this.prisma.lesson.findFirst({
+      where: { id: lessonId, organization_id: organizationId, deleted_at: null },
+      include: {
+        materials: { where: { deleted_at: null } },
+        quiz: { select: { id: true } },
+      },
+    });
+    if (!lesson) {
+      throw new NotFoundException('Lesson not found');
+    }
+
+    return {
+      id: lesson.id,
+      name: lesson.name,
+      duration_hours: lesson.duration_hours,
+      hasQuiz: lesson.quiz !== null,
+      materials: lesson.materials.map((material) => ({
+        id: material.id,
+        name: material.name,
+        type: material.type,
+        content_html: material.content_html,
+        file_url: material.type === 'VIDEO_EXTERNO' ? material.file_url : null,
+      })),
+    };
+  }
+
   /**
    * VIDEO_EXTERNO needs a URL upfront; TEXTO needs inline HTML content.
    * ARQUIVO is deliberately exempt — its file_url is filled in afterwards by
