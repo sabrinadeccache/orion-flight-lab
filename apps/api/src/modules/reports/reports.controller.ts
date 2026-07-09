@@ -14,6 +14,13 @@ export class ReportsController {
     return { module: this.reportsService.name() };
   }
 
+  /**
+   * Not role-restricted: this is consumed by the main '/dashboard' homepage,
+   * which is open to any authenticated staff role (not gated in
+   * apps/web/src/middleware.ts ROUTE_ROLES). The '/reports' frontend route
+   * listed there is a separate static placeholder page that doesn't call
+   * this endpoint — its ROUTE_ROLES entry has no backend counterpart yet.
+   */
   @Get('dashboard-summary')
   @UseGuards(SupabaseAuthGuard, OrganizationGuard)
   getDashboardSummary(@CurrentUser() user: AuthenticatedUser): Promise<DashboardSummary> {

@@ -1,6 +1,9 @@
 import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Role } from '@orion/shared';
 import { SupabaseAuthGuard } from '../auth/guards/supabase-auth.guard';
 import { OrganizationGuard } from '../auth/guards/organization.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuditLog } from '../auth/decorators/audit-log.decorator';
 import { AuthenticatedUser } from '../auth/types/authenticated-user';
@@ -13,8 +16,10 @@ import { UpdateRiskStatusDto } from './dto/update-risk-status.dto';
 import { UpdateHazardDto } from './dto/update-hazard.dto';
 import { UpdateRiskDto } from './dto/update-risk.dto';
 
+/** Mirrors the '/sgso' entry in apps/web/src/middleware.ts ROUTE_ROLES. */
 @Controller('sgso')
-@UseGuards(SupabaseAuthGuard, OrganizationGuard)
+@UseGuards(SupabaseAuthGuard, OrganizationGuard, RolesGuard)
+@Roles(Role.ADMIN, Role.GERENTE_SEGURANCA)
 export class SgsoController {
   constructor(private readonly sgsoService: SgsoService) {}
 
