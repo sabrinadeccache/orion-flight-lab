@@ -48,6 +48,7 @@ export function SidebarNav({ roles }: { roles: string[] }): React.ReactElement {
   const pathname = usePathname();
   const router = useRouter();
   const { supabase } = useSupabase();
+  const isPureStudent = roles.length > 0 && roles.every((role) => role === 'ALUNO');
 
   async function handleLogout(): Promise<void> {
     await supabase.auth.signOut();
@@ -56,8 +57,17 @@ export function SidebarNav({ roles }: { roles: string[] }): React.ReactElement {
   }
 
   return (
-    <nav className="flex h-screen w-56 flex-shrink-0 flex-col border-r border-slate-200 bg-white p-4">
-      <Link href="/dashboard" className="mb-6 block text-lg font-semibold text-slate-900">
+    <nav
+      className={`flex h-screen w-56 flex-shrink-0 flex-col p-4 ${
+        isPureStudent
+          ? 'border-r border-white/10 bg-portal-void'
+          : 'border-r border-slate-200 bg-white'
+      }`}
+    >
+      <Link
+        href={isPureStudent ? '/portal' : '/dashboard'}
+        className={`mb-6 block text-lg font-semibold ${isPureStudent ? 'text-portal-text' : 'text-slate-900'}`}
+      >
         Orion Flight Lab
       </Link>
 
@@ -69,9 +79,13 @@ export function SidebarNav({ roles }: { roles: string[] }): React.ReactElement {
               <Link
                 href={item.href}
                 className={`block rounded-md px-3 py-2 text-sm font-medium ${
-                  active
-                    ? 'bg-slate-900 text-white'
-                    : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+                  isPureStudent
+                    ? active
+                      ? 'bg-portal-amber/10 text-portal-amber'
+                      : 'text-portal-muted hover:bg-white/5 hover:text-portal-text'
+                    : active
+                      ? 'bg-slate-900 text-white'
+                      : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
                 }`}
               >
                 {item.label}
@@ -81,8 +95,10 @@ export function SidebarNav({ roles }: { roles: string[] }): React.ReactElement {
         })}
       </ul>
 
-      <div className="mt-6 space-y-1 border-t border-slate-200 pt-4">
-        {(roles.length > 0 && roles.every((role) => role === 'ALUNO') ? [] : QUICK_ACTIONS).map((item) => (
+      <div
+        className={`mt-6 space-y-1 border-t pt-4 ${isPureStudent ? 'border-white/10' : 'border-slate-200'}`}
+      >
+        {(isPureStudent ? [] : QUICK_ACTIONS).map((item) => (
           <Link
             key={item.href}
             href={item.href}
@@ -96,7 +112,11 @@ export function SidebarNav({ roles }: { roles: string[] }): React.ReactElement {
       <button
         type="button"
         onClick={handleLogout}
-        className="mt-4 rounded-md border border-slate-200 px-3 py-2 text-left text-sm font-medium text-slate-600 hover:bg-slate-100"
+        className={`mt-4 rounded-md border px-3 py-2 text-left text-sm font-medium ${
+          isPureStudent
+            ? 'border-white/10 text-portal-muted hover:bg-white/5'
+            : 'border-slate-200 text-slate-600 hover:bg-slate-100'
+        }`}
       >
         Sair
       </button>

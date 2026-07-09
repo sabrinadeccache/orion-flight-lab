@@ -72,11 +72,11 @@ export function LessonViewer({ lesson }: { lesson: LessonView }): React.ReactEle
     <div className="space-y-6">
       <div className="space-y-4">
         {lesson.materials.map((material) => (
-          <div key={material.id} className="rounded-lg border border-slate-200 bg-white p-4">
-            <p className="mb-2 font-medium text-slate-900">{material.name}</p>
+          <div key={material.id} className="rounded-xl border border-white/5 bg-portal-panel p-6">
+            <p className="mb-3 font-display text-sm font-semibold text-portal-text">{material.name}</p>
             {material.type === 'TEXTO' && material.content_html && (
               <div
-                className="prose prose-sm max-w-none"
+                className="prose prose-invert prose-sm max-w-none text-portal-text/90"
                 dangerouslySetInnerHTML={{ __html: material.content_html }}
               />
             )}
@@ -85,15 +85,15 @@ export function LessonViewer({ lesson }: { lesson: LessonView }): React.ReactEle
                 href={material.file_url}
                 target="_blank"
                 rel="noreferrer"
-                className="text-sm text-slate-600 underline"
+                className="flex aspect-video items-center justify-center rounded-lg bg-black/40 text-sm font-medium text-portal-amber hover:bg-black/60"
               >
-                Assistir vídeo
+                ▶ Assistir vídeo
               </a>
             )}
             {material.type === 'ARQUIVO' && (
               <button
                 onClick={() => handleDownload(material.id)}
-                className="rounded-md border px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                className="rounded-md border border-white/10 px-4 py-2 text-sm font-medium text-portal-text hover:bg-white/5"
               >
                 Abrir arquivo
               </button>
@@ -101,19 +101,23 @@ export function LessonViewer({ lesson }: { lesson: LessonView }): React.ReactEle
           </div>
         ))}
         {lesson.materials.length === 0 && (
-          <p className="text-sm text-slate-400">Nenhum material cadastrado para esta lição.</p>
+          <p className="text-sm text-portal-muted">Nenhum material cadastrado para esta lição.</p>
         )}
       </div>
 
       {lesson.hasQuiz && lesson.quizId && <QuizTaker quizId={lesson.quizId} authedFetch={authedFetch} />}
 
-      <div className="flex items-center gap-3 border-t border-slate-200 pt-4">
+      <div className="flex items-center gap-3 border-t border-white/5 pt-6">
         <button
           onClick={handleMarkComplete}
           disabled={saving || status === 'CONCLUIDO'}
-          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          className={`rounded-full px-6 py-2.5 text-sm font-semibold disabled:opacity-60 ${
+            status === 'CONCLUIDO'
+              ? 'bg-portal-cyan/15 text-portal-cyan'
+              : 'bg-portal-amber text-portal-void hover:bg-portal-amber/90'
+          }`}
         >
-          {status === 'CONCLUIDO' ? 'Lição concluída' : saving ? 'Salvando...' : 'Marcar como concluída'}
+          {status === 'CONCLUIDO' ? '✓ Lição concluída' : saving ? 'Salvando...' : 'Marcar como concluída'}
         </button>
       </div>
     </div>
@@ -159,28 +163,33 @@ function QuizTaker({
   }
 
   if (!quiz) {
-    return <p className="text-sm text-slate-400">Carregando quiz...</p>;
+    return <p className="text-sm text-portal-muted">Carregando quiz...</p>;
   }
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4">
-      <h2 className="mb-3 font-medium text-slate-900">{quiz.title}</h2>
+    <div className="rounded-xl border border-portal-amber/20 bg-portal-panel p-6">
+      <p className="mb-4 font-mono text-xs uppercase tracking-widest text-portal-amber">Quiz formativo</p>
+      <h2 className="mb-4 font-display text-base font-semibold text-portal-text">{quiz.title}</h2>
       {score !== null ? (
-        <p className="text-sm font-medium text-slate-700">Sua nota: {score.toFixed(0)}%</p>
+        <p className="font-mono text-2xl font-semibold text-portal-cyan">{score.toFixed(0)}%</p>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-5">
           {quiz.questions.map((question) => (
             <div key={question.id}>
-              <p className="mb-1 text-sm font-medium text-slate-800">{question.prompt}</p>
+              <p className="mb-2 text-sm font-medium text-portal-text">{question.prompt}</p>
               <div className="space-y-1">
                 {question.options.map((option) => (
-                  <label key={option.id} className="flex items-center gap-2 text-sm text-slate-700">
+                  <label
+                    key={option.id}
+                    className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-portal-text/90 hover:bg-white/5"
+                  >
                     <input
                       type="radio"
                       name={question.id}
                       value={option.id}
                       checked={answers[question.id] === option.id}
                       onChange={() => setAnswers((prev) => ({ ...prev, [question.id]: option.id }))}
+                      className="accent-portal-amber"
                     />
                     {option.text}
                   </label>
@@ -190,7 +199,7 @@ function QuizTaker({
           ))}
           <button
             onClick={submit}
-            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white"
+            className="rounded-full bg-portal-amber px-6 py-2.5 text-sm font-semibold text-portal-void hover:bg-portal-amber/90"
           >
             Enviar respostas
           </button>

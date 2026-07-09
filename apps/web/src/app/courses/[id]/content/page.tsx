@@ -27,7 +27,15 @@ export default async function CourseContentPage({
       <Link href="/courses" className="mb-4 inline-block text-sm text-slate-600 hover:underline">
         ← Voltar para Cursos
       </Link>
-      <h1 className="mb-1 text-2xl font-semibold text-slate-900">Conteúdo — {course.name}</h1>
+      <div className="mb-1 flex items-center justify-between">
+        <h1 className="text-2xl font-semibold text-slate-900">Conteúdo — {course.name}</h1>
+        <Link
+          href={`/courses/${course.id}/preview`}
+          className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+        >
+          Visualizar como aluno
+        </Link>
+      </div>
       <p className="mb-6 text-sm text-slate-500">
         Segmentos → Módulos → Unidades → Subunidades → Lições → Materiais e quizzes formativos.
       </p>

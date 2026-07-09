@@ -28,22 +28,24 @@ export default async function PortalLessonPage({
 
   if (!lesson) {
     return (
-      <main className="mx-auto max-w-3xl p-8">
-        <p className="text-slate-500">Lição não encontrada.</p>
+      <main className="mx-auto max-w-3xl px-8 py-10">
+        <p className="text-portal-muted">Lição não encontrada.</p>
       </main>
     );
   }
 
   return (
-    <main className="mx-auto max-w-3xl p-8">
+    <main className="mx-auto max-w-3xl px-8 py-10">
       <Link
         href={`/portal/enrollments/${lesson.enrollmentId}`}
-        className="mb-4 inline-block text-sm text-slate-600 hover:underline"
+        className="mb-6 inline-block font-mono text-xs text-portal-muted hover:text-portal-amber"
       >
         ← Voltar para o curso
       </Link>
-      <h1 className="mb-1 text-2xl font-semibold text-slate-900">{lesson.name}</h1>
-      <p className="mb-6 text-sm text-slate-500">Carga horária: {lesson.duration_hours}h</p>
+      <p className="mb-1 font-mono text-xs uppercase tracking-widest text-portal-muted">
+        {lesson.duration_hours}h de carga horária
+      </p>
+      <h1 className="mb-8 font-display text-2xl font-bold text-portal-text">{lesson.name}</h1>
       <LessonViewer lesson={lesson} />
     </main>
   );
