@@ -3,6 +3,7 @@ import { AcademicService } from '../src/modules/academic/academic.service';
 import { SgsoService } from '../src/modules/sgso/sgso.service';
 import { PrismaService } from '../src/common/prisma/prisma.service';
 import { StorageService } from '../src/common/storage/storage.service';
+import { SupabaseAdminService } from '../src/common/supabase-admin/supabase-admin.service';
 
 /**
  * Runs against a real, ephemeral Postgres (see .github/workflows/ci.yml) with
@@ -27,7 +28,7 @@ describeIfDatabase('multi-tenant isolation (integration)', () => {
 
   beforeAll(async () => {
     prisma = new PrismaService();
-    academicService = new AcademicService(prisma, {} as StorageService);
+    academicService = new AcademicService(prisma, {} as StorageService, {} as SupabaseAdminService);
     sgsoService = new SgsoService(prisma);
 
     orgA = await prisma.organization.create({
