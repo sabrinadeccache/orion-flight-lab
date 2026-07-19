@@ -12,10 +12,15 @@ import { AuthenticatedUser, SupabaseJwtPayload } from '../types/authenticated-us
  * supabase-js; this guard only ever verifies the token the client already
  * obtained.
  *
- * Supabase projects sign access tokens asymmetrically (ES256, rotatable key
- * pairs) and publish the public keys at /auth/v1/.well-known/jwks.json —
- * there is no shared secret to verify against, so we fetch and cache the
- * signing key by `kid` instead.
+ * The hosted project signs access tokens asymmetrically (ES256, rotatable
+ * key pairs) and publishes the public keys at
+ * /auth/v1/.well-known/jwks.json, so that's the primary path. Local/
+ * self-hosted Supabase stacks (`supabase start`, used by the CI test-e2e
+ * job) sign with HS256 against a shared secret instead — both are current,
+ * legitimate Supabase Auth signing modes, so a token whose header says
+ * `alg: HS256` is verified against `SUPABASE_JWT_SECRET` rather than JWKS.
+ * This isn't a test-only bypass: it's real signature verification either
+ * way, just against whichever key material that mode actually uses.
  */
 @Injectable()
 export class SupabaseAuthGuard implements CanActivate {
@@ -58,6 +63,35 @@ export class SupabaseAuthGuard implements CanActivate {
   }
 
   private verify(token: string): Promise<SupabaseJwtPayload> {
+    const header = jwt.decode(token, { complete: true })?.header;
+
+    if (header?.alg === 'HS256') {
+      return this.verifyHs256(token);
+    }
+
+    return this.verifyJwks(token);
+  }
+
+  private verifyHs256(token: string): Promise<SupabaseJwtPayload> {
+    const secret = this.configService.get<string>('SUPABASE_JWT_SECRET');
+
+    return new Promise((resolve, reject) => {
+      if (!secret) {
+        reject(new UnauthorizedException('Invalid or expired token'));
+        return;
+      }
+
+      jwt.verify(token, secret, { algorithms: ['HS256'] }, (err, decoded) => {
+        if (err || !decoded) {
+          reject(new UnauthorizedException('Invalid or expired token'));
+          return;
+        }
+        resolve(decoded as SupabaseJwtPayload);
+      });
+    });
+  }
+
+  private verifyJwks(token: string): Promise<SupabaseJwtPayload> {
     return new Promise((resolve, reject) => {
       jwt.verify(
         token,

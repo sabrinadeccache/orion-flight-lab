@@ -147,6 +147,10 @@ jobs:
         run: nohup npm run start --workspace=apps/api > api.log 2>&1 &
         env:
           SUPABASE_SERVICE_ROLE_KEY: ${{ env.SERVICE_ROLE_KEY }}
+          # Local Supabase (supabase start) signs JWTs with HS256 against this
+          # shared secret, not ES256/JWKS like the hosted project — the guard's
+          # HS256 fallback verifies against it. See supabase-auth.guard.ts.
+          SUPABASE_JWT_SECRET: ${{ env.JWT_SECRET }}
 
       - name: Start web in background
         run: nohup npm run start --workspace=apps/web > web.log 2>&1 &
