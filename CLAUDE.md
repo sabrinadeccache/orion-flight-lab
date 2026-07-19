@@ -237,7 +237,13 @@ Para validar qualquer endpoint/regra de negócio contra a infra real:
 
 ## 16. Próximos passos sugeridos (em ordem de valor)
 
-Todas as RNs numeradas (§5), os itens de infraestrutura (Sentry, CORS), a rede de testes automatizados (§17) e o LMS completo (§12) estão implementados e testados. O que resta é principalmente itens que dependem de decisões/contas externas:
+Todas as RNs numeradas (§5), os itens de infraestrutura (Sentry, CORS), a rede de testes automatizados incluindo o smoke test E2E (§17) e o LMS completo (§12) estão implementados e testados. **Estado em 2026-07-19: todos os itens numerados abaixo (1–6) estão ✅ concluídos.** O que resta de fato pendente não é trabalho de engenharia esperando execução, e sim decisão do usuário:
+
+- **Item 5** tem um gap aceito, não esquecido: RBAC de `academic`/`personnel`/`documents`/`organization` no backend depende de decidir "quem deveria ver o quê" antes de codar — é decisão de produto.
+- **Item 8** (Leaked Password Protection do Supabase Auth) está bloqueado pelo plano Free da organização Supabase — só destrava com upgrade pra Pro (~US$25/mês), decisão de custo do usuário, reavaliar junto com o upgrade da Vercel.
+- **Item 7** é genérico (novas RNs conforme o produto evolui) — sem próximo passo concreto até o usuário trazer um requisito novo.
+
+Não iniciar nenhum desses três sem o usuário decidir primeiro. Se o usuário disser só "continue" sem mais contexto, perguntar qual desses (ou algo fora dessa lista) ele quer atacar — não assumir.
 
 1. ✅ **CRUD de frontend** (ver §18 para o mapa completo) — Clients/Contracts/Documents têm CRUD completo, Qualifications tem entrada manual (`/qualifications/new`), SGQ/SGSO têm o modelo Listar + Criar + ações de estado (com edição em AuditProgram/Audit/Hazard/Risk), CRM/Financial têm Listar + Criar + GET :id + edição, e Certificates tem Criar + Detalhe + Download (sem editar/excluir, trilha de auditoria).
 2. ✅ **LMS completo** (ver §12 para o detalhe da rodada) — autoria de conteúdo (Segment→Material, `/courses/[id]/content`), portal do aluno com login real (`/portal`), progresso por lição/curso, quiz formativo. Fora de escopo desta rodada, deliberadamente: SCORM/xAPI (padrão de terceiros) e fórum/discussão — só valem a pena se o cliente pedir depois.
