@@ -76,6 +76,104 @@ jobs:
       - run: npx prisma migrate deploy
       - run: npm run test:integration --workspace=apps/api
 
+  # Smoke test only (CLAUDE.md §16 item 4) — spins up a real, local, throwaway
+  # Supabase stack (Postgres + Auth/GoTrue + Storage) via the Supabase CLI, so
+  # login goes through a real JWT verified against a real JWKS endpoint,
+  # exactly like production, but never the hosted project (see supabase/rls
+  # for why migrations are split from RLS/policies). Everything here is
+  # destroyed when the job ends — no cleanup step needed (contrast with the
+  # real Supabase project's "always empty at rest" rule in CLAUDE.md §11/§15,
+  # which is specifically about that persistent, shared resource).
+  test-e2e:
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      REDIS_URL: redis://localhost:6379
+      DATABASE_URL: postgresql://postgres:postgres@localhost:54322/postgres
+      DIRECT_URL: postgresql://postgres:postgres@localhost:54322/postgres
+      SUPABASE_URL: http://localhost:54321
+      NEXT_PUBLIC_SUPABASE_URL: http://localhost:54321
+      NEXT_PUBLIC_API_URL: http://localhost:3001
+      NEXT_PUBLIC_SENTRY_DSN: https://examplePublicKey@o0.ingest.sentry.io/0
+      CORS_ALLOWED_ORIGINS: http://localhost:3000
+      PORT: 3001
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: npm ci
+      - run: npm run build:shared
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 1.226.4
+
+      - name: Start local Supabase stack
+        run: supabase start
+
+      - name: Capture local Supabase keys
+        run: supabase status -o env >> "$GITHUB_ENV"
+
+      - run: npx prisma migrate deploy
+
+      # Must run after Prisma creates the tables — see supabase/rls/README.md.
+      - name: Apply Supabase RLS/policy migrations
+        run: |
+          for f in supabase/rls/*.sql; do
+            echo "Applying $f"
+            psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -f "$f"
+          done
+
+      - run: npm run build --workspace=apps/api
+      - name: Build apps/web
+        run: npm run build --workspace=apps/web
+        env:
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ env.ANON_KEY }}
+
+      - name: Start API in background
+        run: nohup npm run start --workspace=apps/api > api.log 2>&1 &
+        env:
+          SUPABASE_SERVICE_ROLE_KEY: ${{ env.SERVICE_ROLE_KEY }}
+
+      - name: Start web in background
+        run: nohup npm run start --workspace=apps/web > web.log 2>&1 &
+        env:
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ env.ANON_KEY }}
+
+      - name: Wait for apps to be ready
+        run: npx wait-on http://localhost:3001/api/docs http://localhost:3000/login --timeout 60000
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+        working-directory: apps/web
+
+      - name: Run E2E smoke test
+        run: npm run test:e2e --workspace=apps/web
+        env:
+          SUPABASE_SERVICE_ROLE_KEY: ${{ env.SERVICE_ROLE_KEY }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ env.ANON_KEY }}
+
+      - name: Upload debug artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-debug
+          path: |
+            apps/web/playwright-report/
+            api.log
+            web.log
+          retention-days: 7
+
   build:
     runs-on: ubuntu-latest
     # apps/web's Supabase client throws at build/prerender time if these are

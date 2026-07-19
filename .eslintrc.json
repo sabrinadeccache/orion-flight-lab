@@ -27,7 +27,9 @@
     "build",
     ".next",
     ".turbo",
-    "*.js"
+    "*.js",
+    "apps/web/e2e",
+    "apps/web/playwright.config.ts"
   ],
   "rules": {
     "@typescript-eslint/no-explicit-any": "error",

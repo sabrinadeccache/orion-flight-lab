@@ -36,6 +36,11 @@ yarn-error.log*
 # prisma
 prisma/*.db
 
+# playwright (e2e)
+apps/web/e2e/.fixture.json
+apps/web/playwright-report/
+apps/web/test-results/
+
 # misc
 coverage/
 .eslintcache

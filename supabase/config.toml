@@ -1,0 +1,46 @@
+# Config mínima do Supabase CLI para subir uma stack local efêmera (usada pelo
+# job `test-e2e` do CI — ver .github/workflows/ci.yml e CLAUDE.md §17).
+# Studio/Realtime/Edge Functions/Inbucket/Analytics ficam desligados de propósito
+# para manter o boot rápido; só o necessário para JWT/JWKS real (Auth) e Storage
+# (buckets privados usados pelo app) fica ligado.
+project_id = "orion-flight-lab"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "storage", "graphql_public"]
+extra_search_path = ["public"]
+max_rows = 1000
+
+[db]
+port = 54322
+major_version = 15
+
+[studio]
+enabled = false
+
+[inbucket]
+enabled = false
+
+[storage]
+enabled = true
+file_size_limit = "50MiB"
+
+[auth]
+enabled = true
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["http://localhost:3000/**"]
+jwt_expiry = 3600
+enable_signup = true
+
+[auth.email]
+enable_confirmations = false
+
+[realtime]
+enabled = false
+
+[edge_runtime]
+enabled = false
+
+[analytics]
+enabled = false
