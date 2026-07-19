@@ -2,9 +2,17 @@ import { test, expect } from '@playwright/test';
 import { readFixture } from './fixtures';
 
 test('golden path: login -> dashboard -> create client', async ({ page }) => {
+  // Next.js's App Router prefetches every visible <Link> (the sidebar nav
+  // renders ~13 of them); a test navigating faster than a human aborts those
+  // in-flight RSC prefetches mid-request, which Next.js logs as a console
+  // error even though it's benign (it falls back to a normal navigation).
+  // Not indicative of an app bug — filtered out rather than asserted on.
+  const isBenignPrefetchAbort = (text: string): boolean =>
+    text.includes('Failed to fetch RSC payload');
+
   const consoleErrors: string[] = [];
   page.on('console', (message) => {
-    if (message.type() === 'error') {
+    if (message.type() === 'error' && !isBenignPrefetchAbort(message.text())) {
       consoleErrors.push(message.text());
     }
   });
