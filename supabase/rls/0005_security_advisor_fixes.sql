@@ -8,7 +8,20 @@
 alter function public.set_updated_at() set search_path = public, pg_temp;
 alter function public.storage_object_organization_id(text) set search_path = public, pg_temp;
 
-revoke execute on function public.rls_auto_enable() from anon;
-revoke execute on function public.rls_auto_enable() from authenticated;
-
-revoke execute on function public.rls_auto_enable() from public;
+-- rls_auto_enable() is installed by the hosted Supabase platform itself (an
+-- internal event-trigger helper), not by our own migrations — it does not
+-- exist on a self-hosted/local stack (supabase start), so guard the revokes
+-- instead of failing the whole migration run there (found running the
+-- test-e2e CI job against a fresh local stack, 2026-07-19).
+do $$
+begin
+  if exists (
+    select 1 from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = 'rls_auto_enable'
+  ) then
+    revoke execute on function public.rls_auto_enable() from anon;
+    revoke execute on function public.rls_auto_enable() from authenticated;
+    revoke execute on function public.rls_auto_enable() from public;
+  end if;
+end $$;
