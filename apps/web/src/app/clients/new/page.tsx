@@ -56,8 +56,11 @@ export default function NewClientPage(): React.ReactElement {
       <h1 className="mb-6 text-2xl font-semibold text-slate-900">Novo cliente</h1>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="mb-1 block text-sm font-medium text-slate-700">Nome</label>
+          <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="name">
+            Nome
+          </label>
           <input
+            id="name"
             required
             value={name}
             onChange={(event) => setName(event.target.value)}
@@ -65,18 +68,22 @@ export default function NewClientPage(): React.ReactElement {
           />
         </div>
         <div>
-          <label className="mb-1 block text-sm font-medium text-slate-700">
+          <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="cnpjCpf">
             CNPJ/CPF (opcional)
           </label>
           <input
+            id="cnpjCpf"
             value={cnpjCpf}
             onChange={(event) => setCnpjCpf(event.target.value)}
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
           />
         </div>
         <div>
-          <label className="mb-1 block text-sm font-medium text-slate-700">Tipo</label>
+          <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="type">
+            Tipo
+          </label>
           <select
+            id="type"
             value={type}
             onChange={(event) => setType(event.target.value)}
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
