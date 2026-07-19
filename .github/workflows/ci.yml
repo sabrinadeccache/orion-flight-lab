@@ -120,8 +120,12 @@ jobs:
       - name: Start local Supabase stack
         run: supabase start
 
+      # `supabase status -o env` prints KEY="value" (shell-quoted) — GITHUB_ENV
+      # takes the value literally, so without stripping the quotes every var
+      # ends up wrapped in literal `"` characters (broke JWT parsing: found
+      # running this job for real, "illegal base64 data at input byte 0").
       - name: Capture local Supabase keys
-        run: supabase status -o env >> "$GITHUB_ENV"
+        run: supabase status -o env | sed -E 's/^([A-Z_]+)="(.*)"$/\1=\2/' >> "$GITHUB_ENV"
 
       - run: npx prisma migrate deploy
 
