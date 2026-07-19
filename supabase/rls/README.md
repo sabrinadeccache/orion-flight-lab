@@ -25,3 +25,11 @@ Isso é exatamente o que o job `test-e2e` do CI faz (`.github/workflows/ci.yml`)
 mesmo passo que qualquer sessão local precisa rodar manualmente depois de
 `supabase start` — não existe automação de "rodar tudo sozinho" aqui de propósito,
 pra essa dependência de ordem ficar visível em vez de escondida.
+
+**Mesmo problema também existia com `supabase/seed.sql`** — `supabase start` roda o
+seed automaticamente, antes do Prisma criar qualquer tabela, e travava com
+`relation "public.organizations" does not exist` (achado na primeira rodada real do
+job `test-e2e` no CI). Corrigido desligando o seed automático em
+`supabase/config.toml` (`[db.seed] enabled = false`); rode
+`psql "$DIRECT_URL" -f supabase/seed.sql` manualmente depois do passo 3 acima, se
+quiser a organização de demo localmente.

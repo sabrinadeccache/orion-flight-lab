@@ -16,6 +16,14 @@ max_rows = 1000
 port = 54322
 major_version = 15
 
+# `supabase start` seeds supabase/seed.sql automatically, BEFORE Prisma has
+# had a chance to create any tables — same ordering hazard as supabase/rls
+# (see supabase/rls/README.md), just for seed data instead of RLS. Disabled
+# here; run `psql "$DIRECT_URL" -f supabase/seed.sql` manually after
+# `prisma migrate deploy` if you want the demo seed row locally.
+[db.seed]
+enabled = false
+
 [studio]
 enabled = false
 
